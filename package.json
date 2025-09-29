@@ -1,5 +1,5 @@
 {
-  "name": "api-acerto", // Nome da nova API
+  "name": "api-acerto",
   "version": "1.0.0",
   "description": "API para interagir com SQL Server para o PWA de acertos.",
   "main": "server.js",
