@@ -3,12 +3,12 @@ require('dotenv').config();
 
 const config = {
   user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD, // NUNCA LOGAR ISSO EM PRODUÇÃO!
+  password: process.env.DB_PASSWORD,
   server: process.env.DB_SERVER,
   database: process.env.DB_DATABASE,
   options: {
     encrypt: true,
-    trustServerCertificate: false
+    trustServerCertificate: true  // ⬅️ MUDOU AQUI (temporariamente para teste)
   },
   port: parseInt(process.env.DB_PORT || '1433')
 };
