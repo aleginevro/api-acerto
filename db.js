@@ -3,7 +3,7 @@ require('dotenv').config();
 
 const config = {
   user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD,
+  password: process.env.DB_PASSWORD, // NUNCA LOGAR ISSO EM PRODUÇÃO!
   server: process.env.DB_SERVER,
   database: process.env.DB_DATABASE,
   options: {
@@ -20,6 +20,15 @@ async function getPool() {
     return pool;
   }
   try {
+    console.log('--- Configuração de Conexão do DB ---');
+    console.log('Server:', config.server);
+    console.log('Port:', config.port);
+    console.log('Database:', config.database);
+    console.log('User:', config.user);
+    console.log('Encrypt:', config.options.encrypt);
+    console.log('TrustServerCertificate:', config.options.trustServerCertificate);
+    console.log('------------------------------------');
+
     pool = await sql.connect(config);
     console.log('🔗 Conectado ao SQL Server!');
     return pool;
