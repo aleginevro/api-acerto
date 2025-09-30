@@ -95,8 +95,8 @@ app.post('/api/atualizar-status-itens-ipe', async (req, res) => {
         // Usa o IPE_COD como identificador único
         request.input('IPE_COD', sql.Int, parseInt(item.IPE_COD)); 
 
-        // Query de atualização simplificada usando IPE_COD
-        const query = 'UPDATE TB_IPE SET IPE_STA = @IPE_STA WHERE IPE_COD = @IPE_COD';
+        // Query de atualização simplificada usando IPE_COD e o nome correto da tabela
+        const query = 'UPDATE CAD_IPE SET IPE_STA = @IPE_STA WHERE IPE_COD = @IPE_COD'; // <--- CORRIGIDO AQUI!
         
         console.log(`  📝 Query: ${query}`);
         console.log(`  📦 Item: IPE_COD=${item.IPE_COD}`);
@@ -135,6 +135,7 @@ app.post('/api/atualizar-status-itens-ipe', async (req, res) => {
     });
   }
 });
+
 
 app.listen(PORT, () => {
   console.log(`🚀 Servidor rodando na porta ${PORT}`);
