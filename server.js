@@ -90,8 +90,8 @@ app.post('/api/atualizar-status-itens-ipe', async (req, res) => {
 
         const request = pool.request();
         
-        // Define o status a ser atualizado (8 para devolvido)
-        request.input('IPE_STA', sql.Int, 8); 
+        // Define o status a ser atualizado (9 para devolvido)
+        request.input('IPE_STA', sql.Int, 9); 
         // Usa o IPE_COD como identificador único
         request.input('IPE_COD', sql.Int, parseInt(item.IPE_COD)); 
 
