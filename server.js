@@ -82,58 +82,37 @@ app.post('/api/atualizar-status-itens-ipe', async (req, res) => {
     // Processar cada item individualmente
     for (const item of itens) {
       try {
-        const request = pool.request();
-        
-        // Montar a query de UPDATE baseada nos campos disponíveis
-        let query = 'UPDATE TB_IPE SET IPE_STA = @IPE_STA WHERE REV_COD = @REV_COD AND (';
-        const conditions = [];
-        
-        request.input('IPE_STA', sql.Int, 8);
-        request.input('REV_COD', sql.Int, parseInt(item.REV_COD));
-
-        // Identificar o item por CUP_CDI, CUP_CDB ou CUP_REF+CUP_TAM
-        if (item.CUP_CDI) {
-          request.input('CUP_CDI', sql.VarChar, item.CUP_CDI);
-          conditions.push('CUP_CDI = @CUP_CDI');
-        }
-        
-        if (item.CUP_CDB) {
-          request.input('CUP_CDB', sql.VarChar, item.CUP_CDB);
-          conditions.push('CUP_CDB = @CUP_CDB');
-        }
-        
-        if (item.CUP_REF) {
-          request.input('CUP_REF', sql.VarChar, item.CUP_REF);
-          if (item.CUP_TAM) {
-            request.input('CUP_TAM', sql.VarChar, item.CUP_TAM);
-            conditions.push('(CUP_REF = @CUP_REF AND CUP_TAM = @CUP_TAM)');
-          } else {
-            conditions.push('CUP_REF = @CUP_REF');
-          }
-        }
-
-        if (conditions.length === 0) {
-          erros.push({ item, erro: 'Item sem identificadores válidos (CUP_CDI, CUP_CDB ou CUP_REF)' });
+        // Validação: IPE_COD é obrigatório para identificação
+        if (!item.IPE_COD) { 
+          erros.push({ item, erro: 'IPE_COD ausente para este item. Não é possível sincronizar.' });
           continue;
         }
 
-        query += conditions.join(' OR ') + ')';
+        const request = pool.request();
+        
+        // Define o status a ser atualizado (8 para devolvido)
+        request.input('IPE_STA', sql.Int, 8); 
+        // Usa o IPE_COD como identificador único
+        request.input('IPE_COD', sql.Int, parseInt(item.IPE_COD)); 
+
+        // Query de atualização simplificada usando IPE_COD
+        const query = 'UPDATE TB_IPE SET IPE_STA = @IPE_STA WHERE IPE_COD = @IPE_COD';
         
         console.log(`  📝 Query: ${query}`);
-        console.log(`  📦 Item: REV_COD=${item.REV_COD}, CDI=${item.CUP_CDI}, CDB=${item.CUP_CDB}, REF=${item.CUP_REF}`);
+        console.log(`  📦 Item: IPE_COD=${item.IPE_COD}`);
 
         const result = await request.query(query);
         
         if (result.rowsAffected[0] > 0) {
           sincronizados++;
-          console.log(`  ✅ Item atualizado com sucesso (${result.rowsAffected[0]} registro(s))`);
+          console.log(`  ✅ Item IPE_COD=${item.IPE_COD} atualizado com sucesso (${result.rowsAffected[0]} registro(s))`);
         } else {
-          erros.push({ item, erro: 'Nenhum registro foi atualizado (item não encontrado)' });
-          console.log(`  ⚠️ Nenhum registro atualizado para este item`);
+          erros.push({ item, erro: `Nenhum registro atualizado para IPE_COD=${item.IPE_COD} (item não encontrado ou já com status 8)` });
+          console.log(`  ⚠️ Nenhum registro atualizado para IPE_COD=${item.IPE_COD}`);
         }
 
       } catch (itemError) {
-        console.error(`  ❌ Erro ao processar item:`, itemError.message);
+        console.error(`  ❌ Erro ao processar item IPE_COD=${item.IPE_COD}:`, itemError.message);
         erros.push({ item, erro: itemError.message });
       }
     }
