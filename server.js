@@ -251,10 +251,10 @@ app.post('/api/consultar-produtos-gerais', async (req, res) => {
       });
     }
 
-    console.log(`📦 [consultar-produtos-gerais] Executando sp_returnCupDigitacao com parâmetro 1`);
+    console.log(`📦 [consultar-produtos-gerais] Executando sp_returnCupDigitacao com CTL_STA = 1`);
 
     const request = pool.request();
-    request.input('parametro', sql.Int, 1);
+    request.input('CTL_STA', sql.Int, 1); // Nome correto do parâmetro
 
     const result = await request.execute('sp_returnCupDigitacao');
 
