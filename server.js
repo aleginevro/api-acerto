@@ -275,6 +275,103 @@ app.post('/api/consultar-produtos-gerais', async (req, res) => {
 });
 
 
+// URL do NOVO endpoint na sua API do Render para listar acertos do promotor
+const RENDER_API_URL = 'https://api-acerto.onrender.com/api/listar-acertos-promotor'; 
+
+Deno.serve(async (req) => {
+    try {
+        const base44 = createClientFromRequest(req);
+        const user = await base44.auth.me();
+
+        if (!user) {
+            return new Response(JSON.stringify({ error: 'Não autorizado' }), {
+                status: 401,
+                headers: { 'Content-Type': 'application/json' },
+            });
+        }
+
+        if (req.method !== 'POST') {
+            return new Response(JSON.stringify({ error: 'Método não permitido' }), {
+                status: 405,
+                headers: { 'Content-Type': 'application/json' },
+            });
+        }
+
+        // Obtém o CLI_COD do promotor logado
+        const promotorLogado = JSON.parse(localStorage.getItem('promotor_logado') || '{}');
+        const CLI_COD = promotorLogado.CLI_COD;
+
+        if (!CLI_COD) {
+            return new Response(JSON.stringify({ error: 'CLI_COD do promotor não encontrado' }), {
+                status: 400,
+                headers: { 'Content-Type': 'application/json' },
+            });
+        }
+
+        console.log(`Chamando Render API para listar acertos do promotor com CLI_COD: ${CLI_COD}`);
+
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 segundos
+
+        try {
+            const apiResponse = await fetch(RENDER_API_URL, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ CLI_COD }), // Envia o CLI_COD para sua API do Render
+                signal: controller.signal
+            });
+
+            clearTimeout(timeoutId);
+
+            if (!apiResponse.ok) {
+                const errorBody = await apiResponse.text();
+                console.error(`Erro da API do Render (${RENDER_API_URL}): ${apiResponse.status}`, errorBody);
+                // Detalhes de tratamento de erro como antes
+                return new Response(JSON.stringify({
+                    error: 'Erro ao consultar acertos do promotor',
+                    details: errorBody,
+                    status_code: apiResponse.status
+                }), {
+                    status: apiResponse.status,
+                    headers: { 'Content-Type': 'application/json' },
+                });
+            }
+
+            const data = await apiResponse.json();
+            console.log(`Acertos do promotor carregados: ${data.length || 0}`);
+
+            return new Response(JSON.stringify(data), {
+                status: 200,
+                headers: { 'Content-Type': 'application/json' },
+            });
+
+        } catch (fetchError) {
+            clearTimeout(timeoutId);
+            if (fetchError.name === 'AbortError') {
+                return new Response(JSON.stringify({ 
+                    error: 'Timeout na consulta de acertos do promotor' 
+                }), {
+                    status: 408,
+                    headers: { 'Content-Type': 'application/json' },
+                });
+            }
+            throw fetchError;
+        }
+
+    } catch (error) {
+        console.error('Erro na função listarAcertosPromotor:', error);
+        return new Response(JSON.stringify({ 
+            error: 'Erro interno ao processar consulta de acertos do promotor'
+        }), {
+            status: 500,
+            headers: { 'Content-Type': 'application/json' },
+        });
+    }
+});
+
+
 app.listen(PORT, () => {
   console.log(`🚀 Servidor rodando na porta ${PORT}`);
 });
