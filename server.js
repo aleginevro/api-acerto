@@ -168,41 +168,8 @@ app.post('/api/atualizar-status-itens-ipe', async (req, res) => {
 });
 
 
-// NOVO ENDPOINT: Para consultar produtos gerais usando sp_returnCupDigitacao 1
-app.post('/api/consultar-produtos-gerais', async (req, res) => {
-  try {
-    const pool = await getPool();
-    if (!pool) {
-      return res.status(500).json({
-        success: false,
-        error: 'Não foi possível conectar ao banco de dados.'
-      });
-    }
 
-    console.log('📦 [consultar-produtos-gerais] Executando SP sp_returnCupDigitacao com parâmetro 1');
 
-    const request = pool.request();
-    request.input('parametro', sql.Int, 1); // Passando o parâmetro 1 conforme solicitado
-
-    // Assumindo que o nome da SP é 'sp_returnCupDigitacao'
-    const result = await request.execute('sp_returnCupDigitacao');
-
-    console.log(`✅ [consultar-produtos-gerais] Retornou ${result.recordset.length} produtos gerais`);
-
-    res.json({
-      success: true,
-      data: result.recordset,
-      total: result.recordset.length
-    });
-
-  } catch (error) {
-    console.error('❌ [consultar-produtos-gerais] Erro:', error.message);
-    res.status(500).json({
-      success: false,
-      error: 'Erro ao consultar produtos gerais. Detalhes: ' + error.message
-    });
-  }
-});
 
 // NOVO ENDPOINT: Para login de promotores
 app.post('/api/login-promotor', async (req, res) => {
@@ -269,6 +236,40 @@ app.post('/api/login-promotor', async (req, res) => {
     res.status(500).json({
       success: false,
       error: 'Erro interno do servidor ao tentar login. Detalhes: ' + error.message
+    });
+  }
+});
+
+// Endpoint para consultar produtos gerais (sp_returnCupDigitacao)
+app.post('/api/consultar-produtos-gerais', async (req, res) => {
+  try {
+    const pool = await getPool();
+    if (!pool) {
+      return res.status(500).json({
+        success: false,
+        error: 'Não foi possível conectar ao banco de dados.'
+      });
+    }
+
+    console.log(`📦 [consultar-produtos-gerais] Executando sp_returnCupDigitacao com parâmetro 1`);
+
+    const request = pool.request();
+    request.input('parametro', sql.Int, 1);
+
+    const result = await request.execute('sp_returnCupDigitacao');
+
+    console.log(`✅ [consultar-produtos-gerais] SP executada com sucesso. Produtos: ${result.recordset.length}`);
+
+    res.json({
+      success: true,
+      data: result.recordset
+    });
+
+  } catch (error) {
+    console.error('❌ [consultar-produtos-gerais] Erro na SP:', error.message);
+    res.status(500).json({
+      success: false,
+      error: 'Erro ao consultar produtos gerais. Detalhes: ' + error.message
     });
   }
 });
