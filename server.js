@@ -13,15 +13,16 @@ app.get('/', (req, res) => {
   res.send('API Node.js para SQL Server está rodando!');
 });
 
-// Endpoint para consultar itens do pedido via REV_COD (existente)
+// Endpoint para consultar itens do pedido via REV_COD ou PED_COD
 app.post('/api/sp-consulta-ipe-via-rev', async (req, res) => {
   try {
-    const { REV_COD } = req.body;
+    const { REV_COD, PED_COD } = req.body; // Recebe ambos os parâmetros
 
-    if (REV_COD === undefined || REV_COD === null) {
+    // Validação: Pelo menos um dos parâmetros deve ser fornecido
+    if ((REV_COD === undefined || REV_COD === null) && (PED_COD === undefined || PED_COD === null)) {
       return res.status(400).json({
         success: false,
-        error: 'Parâmetro REV_COD é obrigatório.'
+        error: 'Pelo menos um dos parâmetros (REV_COD ou PED_COD) é obrigatório.'
       });
     }
 
@@ -33,10 +34,17 @@ app.post('/api/sp-consulta-ipe-via-rev', async (req, res) => {
       });
     }
 
-    console.log(`📊 [sp-ConsultaIpeViaRev] Executando SP para REV_COD: ${REV_COD}`);
-
     const request = pool.request();
-    request.input('REV_COD', sql.Int, parseInt(REV_COD.toString() || '0'));
+
+    if (PED_COD !== undefined && PED_COD !== null) {
+      // Se PED_COD for fornecido, use-o
+      request.input('PED_COD', sql.Int, parseInt(PED_COD.toString() || '0'));
+      console.log(`📊 [sp-ConsultaIpeViaRev] Executando SP para PED_COD: ${PED_COD}`);
+    } else {
+      // Caso contrário, use REV_COD (já validado que não é nulo)
+      request.input('REV_COD', sql.Int, parseInt(REV_COD.toString() || '0'));
+      console.log(`📊 [sp-ConsultaIpeViaRev] Executando SP para REV_COD: ${REV_COD}`);
+    }
 
     const result = await request.execute('sp_ConsultaIpeViaRev');
 
