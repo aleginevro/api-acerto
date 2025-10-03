@@ -93,7 +93,6 @@ app.post('/api/atualizar-status-itens-ipe', async (req, res) => {
     let inseridos = 0;
     const erros = [];
 
-    // Processar cada item individualmente
     for (const item of itens) {
       try {
         const request = pool.request();
@@ -120,28 +119,44 @@ app.post('/api/atualizar-status-itens-ipe', async (req, res) => {
         // CASO 2: Item NÃO tem IPE_COD (é um item "fora do pedido") - INSERT
         else {
             // Validar campos essenciais para INSERT
-            if (!item.REV_COD || !item.CUP_CDI || !item.PRO_DES || !item.IPE_VTL || !item.PED_COD) { // 🚨 NOVO: PED_COD é obrigatório para INSERT
-                erros.push({ item, erro: 'Dados insuficientes para inserir novo item. REV_COD, CUP_CDI, PRO_DES, IPE_VTL e PED_COD são obrigatórios.' });
+            // Incluído PED_COD como obrigatório para itens fora do pedido
+            if (!item.REV_COD || !item.PED_COD || !item.CUP_CDI || !item.PRO_DES || !item.IPE_VTL) {
+                erros.push({ item, erro: 'Dados insuficientes para inserir novo item. REV_COD, PED_COD, CUP_CDI, PRO_DES e IPE_VTL são obrigatórios.' });
                 continue;
             }
 
             // Mapear e adicionar os parâmetros para o INSERT
             request.input('REV_COD', sql.Int, parseInt(item.REV_COD));
-            request.input('PED_COD', sql.Int, parseInt(item.PED_COD)); // 🚨 NOVO: Adicionando PED_COD para INSERT
+            request.input('PED_COD', sql.Int, parseInt(item.PED_COD)); 
             request.input('CUP_CDI', sql.VarChar(50), item.CUP_CDI);
-            request.input('CUP_CDB', sql.VarChar(50), item.CUP_CDB || null);
-            request.input('CUP_REF', sql.VarChar(50), item.CUP_REF || null);
-            request.input('CUP_TAM', sql.VarChar(10), item.CUP_TAM || null);
+            
+            // Colunas opcionais, verificar se existem no seu DB e remover se necessário
+            if (item.CUP_CDB) request.input('CUP_CDB', sql.VarChar(50), item.CUP_CDB);
+            if (item.CUP_REF) request.input('CUP_REF', sql.VarChar(50), item.CUP_REF);
+            // ❌ REMOVIDO 'CUP_TAM' do input e da query para evitar "Invalid column name 'CUP_TAM'"
+            // Se o seu DB tem CUP_TAM, você precisará adicioná-lo aqui E no queryInsert
+            
             request.input('PRO_DES', sql.VarChar(255), item.PRO_DES);
             request.input('IPE_VTL', sql.Decimal(10, 2), parseFloat(item.IPE_VTL));
             request.input('IPE_STA', sql.Int, item.IPE_STA || 9);
 
+            // Construir a query INSERT dinamicamente para incluir ou não colunas opcionais
+            const insertColumns = ['REV_COD', 'PED_COD', 'CUP_CDI', 'PRO_DES', 'IPE_VTL', 'IPE_STA'];
+            const insertValues = ['@REV_COD', '@PED_COD', '@CUP_CDI', '@PRO_DES', '@IPE_VTL', '@IPE_STA'];
+
+            if (item.CUP_CDB) { insertColumns.push('CUP_CDB'); insertValues.push('@CUP_CDB'); }
+            if (item.CUP_REF) { insertColumns.push('CUP_REF'); insertValues.push('@CUP_REF'); }
+            // Se o seu DB tem CUP_TAM, adicione aqui:
+            // if (item.CUP_TAM) { insertColumns.push('CUP_TAM'); insertValues.push('@CUP_TAM'); request.input('CUP_TAM', sql.VarChar(10), item.CUP_TAM); }
+
+
             const queryInsert = `
-                INSERT INTO CAD_IPE (REV_COD, PED_COD, CUP_CDI, CUP_CDB, CUP_REF, CUP_TAM, PRO_DES, IPE_VTL, IPE_STA)
-                VALUES (@REV_COD, @PED_COD, @CUP_CDI, @CUP_CDB, @CUP_REF, @CUP_TAM, @PRO_DES, @IPE_VTL, @IPE_STA)
-            `; // 🚨 NOVO: Adicionando PED_COD na query INSERT
+                INSERT INTO CAD_IPE (${insertColumns.join(', ')})
+                VALUES (${insertValues.join(', ')})
+            `;
 
             console.log(`  📝 INSERT: CUP_CDI=${item.CUP_CDI}, REV_COD=${item.REV_COD}, PED_COD=${item.PED_COD}, IPE_STA=${item.IPE_STA || 9}`);
+            console.log(`  🔍 QUERY INSERT: ${queryInsert}`); // Log da query gerada
 
             const result = await request.query(queryInsert);
 
@@ -178,6 +193,8 @@ app.post('/api/atualizar-status-itens-ipe', async (req, res) => {
     });
   }
 });
+
+
 
 // NOVO ENDPOINT: Para login de promotores
 app.post('/api/login-promotor', async (req, res) => {
@@ -247,6 +264,8 @@ app.post('/api/login-promotor', async (req, res) => {
     });
   }
 });
+
+
 
 // Endpoint para consultar produtos gerais (sp_returnCupDigitacao)
 app.post('/api/consultar-produtos-gerais', async (req, res) => {
