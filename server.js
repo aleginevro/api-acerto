@@ -87,7 +87,7 @@ app.post('/api/atualizar-status-itens-ipe', async (req, res) => {
     console.log(`🔄 [atualizar-status-itens-ipe] Iniciando sincronização de ${itens.length} itens`);
 
     let sincronizados = 0;
-    let inseridos = 0; // Contador para novos itens inseridos
+    let inseridos = 0;
     const erros = [];
 
     // Processar cada item individualmente
@@ -97,20 +97,20 @@ app.post('/api/atualizar-status-itens-ipe', async (req, res) => {
 
         // CASO 1: Item já tem IPE_COD (existe no pedido original) - UPDATE
         if (item.IPE_COD) {
-          request.input('IPE_STA', sql.Int, 9); // Status 9 para devolvido
+          request.input('IPE_STA', sql.Int, item.IPE_STA); // ✅ CORREÇÃO: usar o status enviado pelo frontend
           request.input('IPE_COD', sql.Int, parseInt(item.IPE_COD));
 
           const queryUpdate = 'UPDATE CAD_IPE SET IPE_STA = @IPE_STA WHERE IPE_COD = @IPE_COD';
 
-          console.log(`  📝 UPDATE: IPE_COD=${item.IPE_COD}`);
+          console.log(`  📝 UPDATE: IPE_COD=${item.IPE_COD}, IPE_STA=${item.IPE_STA}`);
 
           const result = await request.query(queryUpdate);
 
           if (result.rowsAffected[0] > 0) {
             sincronizados++;
-            console.log(`  ✅ Item IPE_COD=${item.IPE_COD} atualizado com sucesso (${result.rowsAffected[0]} registro(s))`);
+            console.log(`  ✅ Item IPE_COD=${item.IPE_COD} atualizado para IPE_STA=${item.IPE_STA} com sucesso (${result.rowsAffected[0]} registro(s))`);
           } else {
-            erros.push({ item, erro: `Nenhum registro atualizado para IPE_COD=${item.IPE_COD} (item não encontrado ou já com status 9)` });
+            erros.push({ item, erro: `Nenhum registro atualizado para IPE_COD=${item.IPE_COD} (item não encontrado)` });
             console.log(`  ⚠️ Nenhum registro atualizado para IPE_COD=${item.IPE_COD}`);
           }
         }
@@ -124,20 +124,20 @@ app.post('/api/atualizar-status-itens-ipe', async (req, res) => {
 
             // Mapear e adicionar os parâmetros para o INSERT
             request.input('REV_COD', sql.Int, parseInt(item.REV_COD));
-            request.input('CUP_CDI', sql.VarChar(50), item.CUP_CDI); // Ajuste o tamanho conforme seu DB
-            request.input('CUP_CDB', sql.VarChar(50), item.CUP_CDB || null); // Pode ser nulo
-            request.input('CUP_REF', sql.VarChar(50), item.CUP_REF || null); // Pode ser nulo
-            request.input('CUP_TAM', sql.VarChar(10), item.CUP_TAM || null); // Ajuste o tamanho conforme seu DB
-            request.input('PRO_DES', sql.VarChar(255), item.PRO_DES); // Ajuste o tamanho conforme seu DB
-            request.input('IPE_VTL', sql.Decimal(10, 2), parseFloat(item.IPE_VTL)); // Garanta o tipo correto
-            request.input('IPE_STA', sql.Int, 9); // Status padrão para item "fora do pedido"
+            request.input('CUP_CDI', sql.VarChar(50), item.CUP_CDI);
+            request.input('CUP_CDB', sql.VarChar(50), item.CUP_CDB || null);
+            request.input('CUP_REF', sql.VarChar(50), item.CUP_REF || null);
+            request.input('CUP_TAM', sql.VarChar(10), item.CUP_TAM || null);
+            request.input('PRO_DES', sql.VarChar(255), item.PRO_DES);
+            request.input('IPE_VTL', sql.Decimal(10, 2), parseFloat(item.IPE_VTL));
+            request.input('IPE_STA', sql.Int, item.IPE_STA || 9); // ✅ Usar o status enviado (padrão 9 se não vier)
 
             const queryInsert = `
                 INSERT INTO CAD_IPE (REV_COD, CUP_CDI, CUP_CDB, CUP_REF, CUP_TAM, PRO_DES, IPE_VTL, IPE_STA)
                 VALUES (@REV_COD, @CUP_CDI, @CUP_CDB, @CUP_REF, @CUP_TAM, @PRO_DES, @IPE_VTL, @IPE_STA)
             `;
 
-            console.log(`  📝 INSERT: CUP_CDI=${item.CUP_CDI}, REV_COD=${item.REV_COD}`);
+            console.log(`  📝 INSERT: CUP_CDI=${item.CUP_CDI}, REV_COD=${item.REV_COD}, IPE_STA=${item.IPE_STA || 9}`);
 
             const result = await request.query(queryInsert);
 
@@ -174,7 +174,6 @@ app.post('/api/atualizar-status-itens-ipe', async (req, res) => {
     });
   }
 });
-
 
 // NOVO ENDPOINT: Para login de promotores
 app.post('/api/login-promotor', async (req, res) => {
