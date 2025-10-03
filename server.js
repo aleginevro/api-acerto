@@ -13,6 +13,8 @@ app.get('/', (req, res) => {
   res.send('API Node.js para SQL Server está rodando!');
 });
 
+
+
 // Endpoint para consultar itens do pedido via REV_COD ou PED_COD
 app.post('/api/sp-consulta-ipe-via-rev', async (req, res) => {
   try {
@@ -65,6 +67,7 @@ app.post('/api/sp-consulta-ipe-via-rev', async (req, res) => {
 });
 
 
+
 // Endpoint para atualizar status de itens IPE ou inserir novos (existente, mas com lógica aprimorada)
 app.post('/api/atualizar-status-itens-ipe', async (req, res) => {
   try {
@@ -108,71 +111,87 @@ app.post('/api/atualizar-status-itens-ipe', async (req, res) => {
 
           if (result.rowsAffected[0] > 0) {
             sincronizados++;
-            console.log(`  ✅ Item IPE_COD=${item.IPE_COD} atualizado para IPE_STA=${item.IPE_STA} com sucesso (${result.rowsAffected[0]} registro(s))`);
+            console.log(`  ✅ Item IPE_COD=${item.IPE_COD} atualizado para IPE_STA=${item.IPE_STA}`);
           } else {
-            erros.push({ item, erro: `Nenhum registro atualizado para IPE_COD=${item.IPE_COD} (item não encontrado)` });
+            erros.push({ item, erro: `Nenhum registro atualizado para IPE_COD=${item.IPE_COD}` });
             console.log(`  ⚠️ Nenhum registro atualizado para IPE_COD=${item.IPE_COD}`);
           }
         }
         // CASO 2: Item NÃO tem IPE_COD (é um item "fora do pedido") - INSERT
         else {
-            // Validar campos essenciais para INSERT
-            // Incluído PED_COD como obrigatório para itens fora do pedido
-            if (!item.REV_COD || !item.PED_COD || !item.CUP_CDI || !item.PRO_DES || !item.IPE_VTL) {
-                erros.push({ item, erro: 'Dados insuficientes para inserir novo item. REV_COD, PED_COD, CUP_CDI, PRO_DES e IPE_VTL são obrigatórios.' });
+            // Validar campos essenciais
+            if (!item.REV_COD || !item.PED_COD || !item.CUP_CDI || !item.PRO_DES || item.IPE_VTL === undefined) {
+                erros.push({ item, erro: 'Dados insuficientes. REV_COD, PED_COD, CUP_CDI, PRO_DES e IPE_VTL são obrigatórios.' });
+                console.log(`  ⚠️ Item rejeitado por falta de dados essenciais`);
                 continue;
             }
 
-            // Mapear e adicionar os parâmetros para o INSERT
+            // Parâmetros obrigatórios
             request.input('REV_COD', sql.Int, parseInt(item.REV_COD));
-            request.input('PED_COD', sql.Int, parseInt(item.PED_COD)); 
-            request.input('CUP_CDI', sql.VarChar(50), item.CUP_CDI);
-            
-            // Colunas opcionais, verificar se existem no seu DB e remover se necessário
-            if (item.CUP_CDB) request.input('CUP_CDB', sql.VarChar(50), item.CUP_CDB);
-            if (item.CUP_REF) request.input('CUP_REF', sql.VarChar(50), item.CUP_REF);
-            // ❌ REMOVIDO 'CUP_TAM' do input e da query para evitar "Invalid column name 'CUP_TAM'"
-            // Se o seu DB tem CUP_TAM, você precisará adicioná-lo aqui E no queryInsert
-            
-            request.input('PRO_DES', sql.VarChar(255), item.PRO_DES);
+            request.input('PED_COD', sql.Int, parseInt(item.PED_COD));
+            request.input('CUP_CDI', sql.VarChar(50), String(item.CUP_CDI));
+            request.input('PRO_DES', sql.VarChar(255), String(item.PRO_DES));
             request.input('IPE_VTL', sql.Decimal(10, 2), parseFloat(item.IPE_VTL));
             request.input('IPE_STA', sql.Int, item.IPE_STA || 9);
 
-            // Construir a query INSERT dinamicamente para incluir ou não colunas opcionais
-            const insertColumns = ['REV_COD', 'PED_COD', 'CUP_CDI', 'PRO_DES', 'IPE_VTL', 'IPE_STA'];
-            const insertValues = ['@REV_COD', '@PED_COD', '@CUP_CDI', '@PRO_DES', '@IPE_VTL', '@IPE_STA'];
+            // Colunas e valores base
+            const columns = ['REV_COD', 'PED_COD', 'CUP_CDI', 'PRO_DES', 'IPE_VTL', 'IPE_STA'];
+            const values = ['@REV_COD', '@PED_COD', '@CUP_CDI', '@PRO_DES', '@IPE_VTL', '@IPE_STA'];
 
-            if (item.CUP_CDB) { insertColumns.push('CUP_CDB'); insertValues.push('@CUP_CDB'); }
-            if (item.CUP_REF) { insertColumns.push('CUP_REF'); insertValues.push('@CUP_REF'); }
-            // Se o seu DB tem CUP_TAM, adicione aqui:
-            // if (item.CUP_TAM) { insertColumns.push('CUP_TAM'); insertValues.push('@CUP_TAM'); request.input('CUP_TAM', sql.VarChar(10), item.CUP_TAM); }
+            // Adicionar CUP_CDB se presente
+            if (item.CUP_CDB) {
+                request.input('CUP_CDB', sql.VarChar(50), String(item.CUP_CDB));
+                columns.push('CUP_CDB');
+                values.push('@CUP_CDB');
+            }
 
+            // Adicionar CUP_REF se presente
+            if (item.CUP_REF) {
+                request.input('CUP_REF', sql.VarChar(50), String(item.CUP_REF));
+                columns.push('CUP_REF');
+                values.push('@CUP_REF');
+            }
+
+            // CUP_TAM foi REMOVIDO porque não existe na sua tabela CAD_IPE
+
+            // Adicionar CUP_COD se presente
+            if (item.CUP_COD) {
+                request.input('CUP_COD', sql.Int, parseInt(item.CUP_COD));
+                columns.push('CUP_COD');
+                values.push('@CUP_COD');
+            }
+
+            // Adicionar UNI_COD se presente
+            if (item.UNI_COD) {
+                request.input('UNI_COD', sql.Int, parseInt(item.UNI_COD));
+                columns.push('UNI_COD');
+                values.push('@UNI_COD');
+            }
 
             const queryInsert = `
-                INSERT INTO CAD_IPE (${insertColumns.join(', ')})
-                VALUES (${insertValues.join(', ')})
+                INSERT INTO CAD_IPE (${columns.join(', ')})
+                VALUES (${values.join(', ')})
             `;
 
-            console.log(`  📝 INSERT: CUP_CDI=${item.CUP_CDI}, REV_COD=${item.REV_COD}, PED_COD=${item.PED_COD}, IPE_STA=${item.IPE_STA || 9}`);
-            console.log(`  🔍 QUERY INSERT: ${queryInsert}`); // Log da query gerada
+            console.log(`  📝 INSERT: PED_COD=${item.PED_COD}, CUP_CDI=${item.CUP_CDI}, REV_COD=${item.REV_COD}, IPE_STA=${item.IPE_STA || 9}`);
 
             const result = await request.query(queryInsert);
 
             if (result.rowsAffected[0] > 0) {
                 inseridos++;
-                console.log(`  ✅ Novo item CUP_CDI=${item.CUP_CDI} inserido com sucesso`);
+                console.log(`  ✅ Item CUP_CDI=${item.CUP_CDI} inserido com sucesso no PED_COD=${item.PED_COD}`);
             } else {
-                erros.push({ item, erro: `Falha ao inserir item CUP_CDI=${item.CUP_CDI} (nenhum registro afetado)` });
+                erros.push({ item, erro: `Falha ao inserir item CUP_CDI=${item.CUP_CDI}` });
             }
         }
 
       } catch (itemError) {
-        console.error(`  ❌ Erro ao processar item (IPE_COD: ${item.IPE_COD || 'NOVO'}, CUP_CDI: ${item.CUP_CDI}, PED_COD: ${item.PED_COD || 'N/A'}):`, itemError.message);
+        console.error(`  ❌ Erro ao processar item (IPE_COD: ${item.IPE_COD || 'NOVO'}, CUP_CDI: ${item.CUP_CDI}):`, itemError.message);
         erros.push({ item, erro: itemError.message });
       }
     }
 
-    console.log(`✅ [atualizar-status-itens-ipe] Sincronização concluída: ${sincronizados} atualizados, ${inseridos} inseridos. Total: ${itens.length} itens processados.`);
+    console.log(`✅ [atualizar-status-itens-ipe] Concluído: ${sincronizados} atualizados, ${inseridos} inseridos de ${itens.length} total.`);
 
     res.json({
       success: true,
@@ -180,14 +199,14 @@ app.post('/api/atualizar-status-itens-ipe', async (req, res) => {
       inseridos,
       total: itens.length,
       erros: erros.length > 0 ? erros : undefined,
-      message: `${sincronizados} itens atualizados e ${inseridos} itens inseridos com sucesso`
+      message: `${sincronizados} atualizados e ${inseridos} inseridos com sucesso`
     });
 
   } catch (error) {
     console.error('❌ [atualizar-status-itens-ipe] Erro geral:', error.message);
     res.status(500).json({
       success: false,
-      error: 'Erro interno do servidor ao processar sincronização. Detalhes: ' + error.message
+      error: 'Erro ao processar sincronização: ' + error.message
     });
   }
 });
