@@ -65,6 +65,9 @@ app.post('/api/sp-consulta-ipe-via-rev', async (req, res) => {
 });
 
 // Endpoint para atualizar status de itens IPE ou inserir novos (existente, mas com lógica aprimorada)
+const sql = require('mssql'); // Assegure-se de que 'mssql' está importado se você usa em seu backend
+const getPool = require('./dbConfig'); // Assegure-se de que 'dbConfig' está corretamente importado
+
 app.post('/api/atualizar-status-itens-ipe', async (req, res) => {
   try {
     const { itens } = req.body;
@@ -97,7 +100,7 @@ app.post('/api/atualizar-status-itens-ipe', async (req, res) => {
 
         // CASO 1: Item já tem IPE_COD (existe no pedido original) - UPDATE
         if (item.IPE_COD) {
-          request.input('IPE_STA', sql.Int, item.IPE_STA); // ✅ CORREÇÃO: usar o status enviado pelo frontend
+          request.input('IPE_STA', sql.Int, item.IPE_STA);
           request.input('IPE_COD', sql.Int, parseInt(item.IPE_COD));
 
           const queryUpdate = 'UPDATE CAD_IPE SET IPE_STA = @IPE_STA WHERE IPE_COD = @IPE_COD';
@@ -117,27 +120,28 @@ app.post('/api/atualizar-status-itens-ipe', async (req, res) => {
         // CASO 2: Item NÃO tem IPE_COD (é um item "fora do pedido") - INSERT
         else {
             // Validar campos essenciais para INSERT
-            if (!item.REV_COD || !item.CUP_CDI || !item.PRO_DES || !item.IPE_VTL) {
-                erros.push({ item, erro: 'Dados insuficientes para inserir novo item. REV_COD, CUP_CDI, PRO_DES e IPE_VTL são obrigatórios.' });
+            if (!item.REV_COD || !item.CUP_CDI || !item.PRO_DES || !item.IPE_VTL || !item.PED_COD) { // 🚨 NOVO: PED_COD é obrigatório para INSERT
+                erros.push({ item, erro: 'Dados insuficientes para inserir novo item. REV_COD, CUP_CDI, PRO_DES, IPE_VTL e PED_COD são obrigatórios.' });
                 continue;
             }
 
             // Mapear e adicionar os parâmetros para o INSERT
             request.input('REV_COD', sql.Int, parseInt(item.REV_COD));
+            request.input('PED_COD', sql.Int, parseInt(item.PED_COD)); // 🚨 NOVO: Adicionando PED_COD para INSERT
             request.input('CUP_CDI', sql.VarChar(50), item.CUP_CDI);
             request.input('CUP_CDB', sql.VarChar(50), item.CUP_CDB || null);
             request.input('CUP_REF', sql.VarChar(50), item.CUP_REF || null);
             request.input('CUP_TAM', sql.VarChar(10), item.CUP_TAM || null);
             request.input('PRO_DES', sql.VarChar(255), item.PRO_DES);
             request.input('IPE_VTL', sql.Decimal(10, 2), parseFloat(item.IPE_VTL));
-            request.input('IPE_STA', sql.Int, item.IPE_STA || 9); // ✅ Usar o status enviado (padrão 9 se não vier)
+            request.input('IPE_STA', sql.Int, item.IPE_STA || 9);
 
             const queryInsert = `
-                INSERT INTO CAD_IPE (REV_COD, CUP_CDI, CUP_CDB, CUP_REF, CUP_TAM, PRO_DES, IPE_VTL, IPE_STA)
-                VALUES (@REV_COD, @CUP_CDI, @CUP_CDB, @CUP_REF, @CUP_TAM, @PRO_DES, @IPE_VTL, @IPE_STA)
-            `;
+                INSERT INTO CAD_IPE (REV_COD, PED_COD, CUP_CDI, CUP_CDB, CUP_REF, CUP_TAM, PRO_DES, IPE_VTL, IPE_STA)
+                VALUES (@REV_COD, @PED_COD, @CUP_CDI, @CUP_CDB, @CUP_REF, @CUP_TAM, @PRO_DES, @IPE_VTL, @IPE_STA)
+            `; // 🚨 NOVO: Adicionando PED_COD na query INSERT
 
-            console.log(`  📝 INSERT: CUP_CDI=${item.CUP_CDI}, REV_COD=${item.REV_COD}, IPE_STA=${item.IPE_STA || 9}`);
+            console.log(`  📝 INSERT: CUP_CDI=${item.CUP_CDI}, REV_COD=${item.REV_COD}, PED_COD=${item.PED_COD}, IPE_STA=${item.IPE_STA || 9}`);
 
             const result = await request.query(queryInsert);
 
@@ -150,7 +154,7 @@ app.post('/api/atualizar-status-itens-ipe', async (req, res) => {
         }
 
       } catch (itemError) {
-        console.error(`  ❌ Erro ao processar item (IPE_COD: ${item.IPE_COD || 'NOVO'}, CUP_CDI: ${item.CUP_CDI}):`, itemError.message);
+        console.error(`  ❌ Erro ao processar item (IPE_COD: ${item.IPE_COD || 'NOVO'}, CUP_CDI: ${item.CUP_CDI}, PED_COD: ${item.PED_COD || 'N/A'}):`, itemError.message);
         erros.push({ item, erro: itemError.message });
       }
     }
