@@ -64,10 +64,8 @@ app.post('/api/sp-consulta-ipe-via-rev', async (req, res) => {
   }
 });
 
-// Endpoint para atualizar status de itens IPE ou inserir novos (existente, mas com lógica aprimorada)
-const sql = require('mssql'); // Assegure-se de que 'mssql' está importado se você usa em seu backend
-const getPool = require('./dbConfig'); // Assegure-se de que 'dbConfig' está corretamente importado
 
+// Endpoint para atualizar status de itens IPE ou inserir novos (existente, mas com lógica aprimorada)
 app.post('/api/atualizar-status-itens-ipe', async (req, res) => {
   try {
     const { itens } = req.body;
