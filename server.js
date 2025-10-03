@@ -145,14 +145,14 @@ app.post('/api/atualizar-status-itens-ipe', async (req, res) => {
                 values.push('@CUP_CDB');
             }
 
-            // Adicionar CUP_REF se presente
+            // **ALTERAÇÃO AQUI: Mapear CUP_REF do frontend para PRO_CDC do banco de dados**
             if (item.CUP_REF) {
-                request.input('CUP_REF', sql.VarChar(50), String(item.CUP_REF));
-                columns.push('CUP_REF');
-                values.push('@CUP_REF');
+                request.input('PRO_CDC', sql.VarChar(50), String(item.CUP_REF)); // Usa o valor de item.CUP_REF, mas o input é @PRO_CDC
+                columns.push('PRO_CDC'); // Adiciona PRO_CDC à lista de colunas
+                values.push('@PRO_CDC'); // Adiciona @PRO_CDC à lista de valores
             }
 
-            // CUP_TAM foi REMOVIDO porque não existe na sua tabela CAD_IPE
+            // CUP_TAM foi REMOVIDO porque não existe na sua tabela CAD_IPE - Comentário Original Mantido
 
             // Adicionar CUP_COD se presente
             if (item.CUP_COD) {
@@ -174,6 +174,10 @@ app.post('/api/atualizar-status-itens-ipe', async (req, res) => {
             `;
 
             console.log(`  📝 INSERT: PED_COD=${item.PED_COD}, CUP_CDI=${item.CUP_CDI}, REV_COD=${item.REV_COD}, IPE_STA=${item.IPE_STA || 9}`);
+            // OPCIONAL: Adicionar log do PRO_CDC aqui para verificar
+            if (item.CUP_REF) {
+                console.log(`    PRO_CDC (via CUP_REF): ${item.CUP_REF}`);
+            }
 
             const result = await request.query(queryInsert);
 
