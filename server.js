@@ -396,7 +396,23 @@ app.post('/api/consultar-regras-desconto', async (req, res) => {
         const request = pool.request();
         request.input('PED_COD', sql.Int, parseInt(PED_COD));
 
-        const query = `SELECT * FROM cad_dpd WHERE PED_COD = @PED_COD`;
+        const query = `SELECT cad_dpd.PED_COD, 
+                       cad_tdp.TDP_DES, 
+	               cad_dpd.GRU_COD,
+	               cad_dpd.DE,
+	               cad_dpd.ATE,
+	               cad_dpd.PORC,
+	               cad_dpd.PORC_BONUS,
+	               cad_dpd.PORC_CARENCIA,
+	               cad_dpd.PORC_PERDA,
+	               cad_dpd.QTDE_ACERTO_CARENCIA,
+	               cad_dpd.DESC_VENDA_TOTAL
+                       FROM 
+                         cad_dpd
+                       JOIN 
+                         cad_tdp
+                       ON 
+                         cad_dpd.TDP_COD = cad_tdp.TDP_COD WHERE PED_COD = @PED_COD`;
         
         console.log(`📊 [consultar-regras-desconto] Consultando regras para PED_COD: ${PED_COD}`);
         
