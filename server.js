@@ -372,6 +372,55 @@ app.post('/api/listar-acertos-promotor', async (req, res) => {
 });
 
 
+
+// ========== ENDPOINT: Consultar Regras de Desconto ==========
+app.post('/api/consultar-regras-desconto', async (req, res) => {
+    try {
+        const { PED_COD } = req.body;
+
+        if (!PED_COD) {
+            return res.status(400).json({
+                success: false,
+                error: 'PED_COD é obrigatório para consultar regras de desconto.'
+            });
+        }
+
+        const pool = await getPool();
+        if (!pool) {
+            return res.status(500).json({
+                success: false,
+                error: 'Não foi possível conectar ao banco de dados.'
+            });
+        }
+
+        const request = pool.request();
+        request.input('PED_COD', sql.Int, parseInt(PED_COD));
+
+        const query = `SELECT * FROM cad_dpd WHERE PED_COD = @PED_COD`;
+        
+        console.log(`📊 [consultar-regras-desconto] Consultando regras para PED_COD: ${PED_COD}`);
+        
+        const result = await request.query(query);
+
+        console.log(`✅ [consultar-regras-desconto] Regras encontradas: ${result.recordset.length}`);
+
+        res.json({
+            success: true,
+            data: result.recordset,
+            total: result.recordset.length
+        });
+
+    } catch (error) {
+        console.error('❌ [consultar-regras-desconto] Erro:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Erro interno ao consultar regras de desconto.',
+            details: error.message
+        });
+    }
+});
+
+
 app.listen(PORT, () => {
   console.log(`🚀 Servidor rodando na porta ${PORT}`);
 });
