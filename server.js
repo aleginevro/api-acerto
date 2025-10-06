@@ -63,7 +63,7 @@ app.post('/api/sp-consulta-ipe-via-rev', async (req, res) => {
 });
 
 // Endpoint para atualizar status de itens IPE ou inserir/deletar
-// ATUALIZADO: Inclui DELETE seguro e retorno de IPE_COD gerado no INSERT
+// ATUALIZADO: INSERT sem CUP_TAM (campo não existe na CAD_IPE)
 app.post('/api/atualizar-status-itens-ipe', async (req, res) => {
   try {
     const { itens } = req.body;
@@ -209,13 +209,12 @@ app.post('/api/atualizar-status-itens-ipe', async (req, res) => {
             continue;
           }
 
-          // Preparar parâmetros para INSERT
+          // Preparar parâmetros para INSERT (SEM CUP_TAM - não existe na CAD_IPE)
           request.input('REV_COD', sql.Int, parseInt(item.REV_COD));
           request.input('PED_COD', sql.Int, parseInt(item.PED_COD));
           request.input('CUP_CDI', sql.VarChar(50), item.CUP_CDI ? String(item.CUP_CDI) : null);
           request.input('CUP_CDB', sql.VarChar(50), item.CUP_CDB ? String(item.CUP_CDB) : null);
           request.input('CUP_REF', sql.VarChar(50), item.CUP_REF ? String(item.CUP_REF) : null);
-          request.input('CUP_TAM', sql.VarChar(10), item.CUP_TAM ? String(item.CUP_TAM) : null);
           request.input('PRO_DES', sql.VarChar(255), item.PRO_DES ? String(item.PRO_DES) : null);
           request.input('IPE_VTL', sql.Decimal(18, 2), item.IPE_VTL ? parseFloat(item.IPE_VTL) : 0);
           request.input('IPE_STA', sql.Int, item.IPE_STA || 9); // Default 9 = devolvido
@@ -227,16 +226,16 @@ app.post('/api/atualizar-status-itens-ipe', async (req, res) => {
           request.input('IPE_DDV', sql.DateTime, item.IPE_DDV ? new Date(item.IPE_DDV) : new Date());
           request.input('USU_DEV', sql.VarChar(50), item.USU_DEV || 'offline');
 
-          // INSERT com OUTPUT para retornar o IPE_COD gerado
+          // INSERT com OUTPUT para retornar o IPE_COD gerado (SEM CUP_TAM)
           const queryInsert = `
             INSERT INTO CAD_IPE (
-              REV_COD, PED_COD, CUP_CDI, CUP_CDB, CUP_REF, CUP_TAM, 
+              REV_COD, PED_COD, CUP_CDI, CUP_CDB, CUP_REF, 
               PRO_DES, IPE_VTL, IPE_STA, CUP_COD, UNI_COD,
               IPE_DFP, IPE_DDV, USU_DEV
             )
             OUTPUT INSERTED.IPE_COD
             VALUES (
-              @REV_COD, @PED_COD, @CUP_CDI, @CUP_CDB, @CUP_REF, @CUP_TAM,
+              @REV_COD, @PED_COD, @CUP_CDI, @CUP_CDB, @CUP_REF,
               @PRO_DES, @IPE_VTL, @IPE_STA, @CUP_COD, @UNI_COD,
               @IPE_DFP, @IPE_DDV, @USU_DEV
             )
