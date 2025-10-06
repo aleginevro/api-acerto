@@ -1,6 +1,6 @@
 const express = require('express');
 const cors = require('cors');
-const { sql, getPool } = require('./db'); // Certifique-se de que './db' existe e exporta 'sql' e 'getPool'
+const { sql, getPool } = require('./db');
 require('dotenv').config();
 
 const app = express();
@@ -13,14 +13,12 @@ app.get('/', (req, res) => {
   res.send('API Node.js para SQL Server está rodando!');
 });
 
-
-
 // Endpoint para consultar itens do pedido via REV_COD ou PED_COD
+// NOTA: Este endpoint não precisa de alterações, pois a SP retorna os novos campos automaticamente
 app.post('/api/sp-consulta-ipe-via-rev', async (req, res) => {
   try {
-    const { REV_COD, PED_COD } = req.body; // Recebe ambos os parâmetros
+    const { REV_COD, PED_COD } = req.body;
 
-    // Validação: Pelo menos um dos parâmetros deve ser fornecido
     if ((REV_COD === undefined || REV_COD === null) && (PED_COD === undefined || PED_COD === null)) {
       return res.status(400).json({
         success: false,
@@ -39,11 +37,9 @@ app.post('/api/sp-consulta-ipe-via-rev', async (req, res) => {
     const request = pool.request();
 
     if (PED_COD !== undefined && PED_COD !== null) {
-      // Se PED_COD for fornecido, use-o
       request.input('PED_COD', sql.Int, parseInt(PED_COD.toString() || '0'));
       console.log(`📊 [sp-ConsultaIpeViaRev] Executando SP para PED_COD: ${PED_COD}`);
     } else {
-      // Caso contrário, use REV_COD (já validado que não é nulo)
       request.input('REV_COD', sql.Int, parseInt(REV_COD.toString() || '0'));
       console.log(`📊 [sp-ConsultaIpeViaRev] Executando SP para REV_COD: ${REV_COD}`);
     }
@@ -66,9 +62,8 @@ app.post('/api/sp-consulta-ipe-via-rev', async (req, res) => {
   }
 });
 
-
-
-// Endpoint para atualizar status de itens IPE ou inserir novos (existente, mas com lógica aprimorada)
+// Endpoint para atualizar status de itens IPE ou inserir novos
+// ATUALIZADO: Inclui novos campos IPE_DFP, IPE_DDV, USU_DEV para itens fora do pedido
 app.post('/api/atualizar-status-itens-ipe', async (req, res) => {
   try {
     const { itens } = req.body;
@@ -103,15 +98,23 @@ app.post('/api/atualizar-status-itens-ipe', async (req, res) => {
           request.input('IPE_STA', sql.Int, item.IPE_STA);
           request.input('IPE_COD', sql.Int, parseInt(item.IPE_COD));
 
-          const queryUpdate = 'UPDATE CAD_IPE SET IPE_STA = @IPE_STA WHERE IPE_COD = @IPE_COD';
+          // NOVO: Se o item tem flag de remarcação, adicionar ao UPDATE
+          let queryUpdate = 'UPDATE CAD_IPE SET IPE_STA = @IPE_STA';
+          
+          if (item.REMARCADO_PROX_MES !== undefined) {
+            request.input('IPE_REM', sql.Bit, item.REMARCADO_PROX_MES ? 1 : 0);
+            queryUpdate += ', IPE_REM = @IPE_REM';
+          }
+          
+          queryUpdate += ' WHERE IPE_COD = @IPE_COD';
 
-          console.log(`  📝 UPDATE: IPE_COD=${item.IPE_COD}, IPE_STA=${item.IPE_STA}`);
+          console.log(`  📝 UPDATE: IPE_COD=${item.IPE_COD}, IPE_STA=${item.IPE_STA}${item.REMARCADO_PROX_MES ? ', IPE_REM=1' : ''}`);
 
           const result = await request.query(queryUpdate);
 
           if (result.rowsAffected[0] > 0) {
             sincronizados++;
-            console.log(`  ✅ Item IPE_COD=${item.IPE_COD} atualizado para IPE_STA=${item.IPE_STA}`);
+            console.log(`  ✅ Item IPE_COD=${item.IPE_COD} atualizado`);
           } else {
             erros.push({ item, erro: `Nenhum registro atualizado para IPE_COD=${item.IPE_COD}` });
             console.log(`  ⚠️ Nenhum registro atualizado para IPE_COD=${item.IPE_COD}`);
@@ -134,9 +137,21 @@ app.post('/api/atualizar-status-itens-ipe', async (req, res) => {
             request.input('IPE_VTL', sql.Decimal(10, 2), parseFloat(item.IPE_VTL));
             request.input('IPE_STA', sql.Int, item.IPE_STA || 9);
 
+            // ===== NOVO: Campos para itens fora do pedido =====
+            request.input('IPE_DFP', sql.Bit, item.IPE_DFP || 1); // Flag: 1 = fora do pedido
+            request.input('USU_DEV', sql.VarChar(50), item.USU_DEV || 'offline'); // Usuário que fez a devolução
+            
+            // IPE_DDV: Data/hora da devolução
+            if (item.IPE_DDV) {
+                request.input('IPE_DDV', sql.DateTime, new Date(item.IPE_DDV));
+            } else {
+                request.input('IPE_DDV', sql.DateTime, new Date()); // Fallback para data atual
+            }
+            // ==================================================
+
             // Colunas e valores base
-            const columns = ['REV_COD', 'PED_COD', 'CUP_CDI', 'PRO_DES', 'IPE_VTL', 'IPE_STA'];
-            const values = ['@REV_COD', '@PED_COD', '@CUP_CDI', '@PRO_DES', '@IPE_VTL', '@IPE_STA'];
+            const columns = ['REV_COD', 'PED_COD', 'CUP_CDI', 'PRO_DES', 'IPE_VTL', 'IPE_STA', 'IPE_DFP', 'IPE_DDV', 'USU_DEV'];
+            const values = ['@REV_COD', '@PED_COD', '@CUP_CDI', '@PRO_DES', '@IPE_VTL', '@IPE_STA', '@IPE_DFP', '@IPE_DDV', '@USU_DEV'];
 
             // Adicionar CUP_CDB se presente
             if (item.CUP_CDB) {
@@ -145,14 +160,12 @@ app.post('/api/atualizar-status-itens-ipe', async (req, res) => {
                 values.push('@CUP_CDB');
             }
 
-            // **ALTERAÇÃO AQUI: Mapear CUP_REF do frontend para PRO_CDC do banco de dados**
+            // Mapear CUP_REF do frontend para PRO_CDC do banco de dados
             if (item.CUP_REF) {
-                request.input('PRO_CDC', sql.VarChar(50), String(item.CUP_REF)); // Usa o valor de item.CUP_REF, mas o input é @PRO_CDC
-                columns.push('PRO_CDC'); // Adiciona PRO_CDC à lista de colunas
-                values.push('@PRO_CDC'); // Adiciona @PRO_CDC à lista de valores
+                request.input('PRO_CDC', sql.VarChar(50), String(item.CUP_REF));
+                columns.push('PRO_CDC');
+                values.push('@PRO_CDC');
             }
-
-            // CUP_TAM foi REMOVIDO porque não existe na sua tabela CAD_IPE - Comentário Original Mantido
 
             // Adicionar CUP_COD se presente
             if (item.CUP_COD) {
@@ -168,13 +181,20 @@ app.post('/api/atualizar-status-itens-ipe', async (req, res) => {
                 values.push('@UNI_COD');
             }
 
+            // NOVO: Adicionar flag de remarcação se presente
+            if (item.REMARCADO_PROX_MES !== undefined) {
+                request.input('IPE_REM', sql.Bit, item.REMARCADO_PROX_MES ? 1 : 0);
+                columns.push('IPE_REM');
+                values.push('@IPE_REM');
+            }
+
             const queryInsert = `
                 INSERT INTO CAD_IPE (${columns.join(', ')})
                 VALUES (${values.join(', ')})
             `;
 
             console.log(`  📝 INSERT: PED_COD=${item.PED_COD}, CUP_CDI=${item.CUP_CDI}, REV_COD=${item.REV_COD}, IPE_STA=${item.IPE_STA || 9}`);
-            // OPCIONAL: Adicionar log do PRO_CDC aqui para verificar
+            console.log(`    IPE_DFP=1, USU_DEV=${item.USU_DEV || 'offline'}, IPE_DDV=${item.IPE_DDV || 'NOW'}`);
             if (item.CUP_REF) {
                 console.log(`    PRO_CDC (via CUP_REF): ${item.CUP_REF}`);
             }
@@ -215,12 +235,10 @@ app.post('/api/atualizar-status-itens-ipe', async (req, res) => {
   }
 });
 
-
-
-// NOVO ENDPOINT: Para login de promotores
+// ENDPOINT: Para login de promotores
 app.post('/api/login-promotor', async (req, res) => {
   try {
-    const { cpf, senha } = req.body; // 'senha' aqui é o mesmo que 'cpf' conforme discutido
+    const { cpf, senha } = req.body;
 
     if (!cpf || !senha) {
       return res.status(400).json({
@@ -240,16 +258,14 @@ app.post('/api/login-promotor', async (req, res) => {
     console.log(`🔐 [login-promotor] Tentativa de login para CPF: ${cpf}`);
 
     const request = pool.request();
-    request.input('CLI_DOC', sql.VarChar(14), cpf); // CPF formatado ou não, depende de como está no DB
-    // Aqui usamos o CPF como a "senha" também, conforme o requisito
+    request.input('CLI_DOC', sql.VarChar(14), cpf);
     request.input('SENHA_CLI_DOC', sql.VarChar(14), senha);
-
 
     const query = `
       SELECT CLI_COD, GRU_COD, CLI_RAZ, CLI_DOC
       FROM CAD_CLI
       WHERE CLI_DOC = @CLI_DOC
-        AND CLI_DOC = @SENHA_CLI_DOC -- Assumindo que a senha é o próprio CLI_DOC
+        AND CLI_DOC = @SENHA_CLI_DOC
         AND GRU_COD IN (2, 4)
         AND CLI_STA = 2;
     `;
@@ -266,7 +282,7 @@ app.post('/api/login-promotor', async (req, res) => {
           CLI_COD: promotor.CLI_COD,
           GRU_COD: promotor.GRU_COD,
           CLI_RAZ: promotor.CLI_RAZ,
-          CLI_DOC: promotor.CLI_DOC
+          CLI_DOC: promotor.CLI_DOD
         }
       });
     } else {
@@ -286,8 +302,6 @@ app.post('/api/login-promotor', async (req, res) => {
   }
 });
 
-
-
 // Endpoint para consultar produtos gerais (sp_returnCupDigitacao)
 app.post('/api/consultar-produtos-gerais', async (req, res) => {
   try {
@@ -302,7 +316,7 @@ app.post('/api/consultar-produtos-gerais', async (req, res) => {
     console.log(`📦 [consultar-produtos-gerais] Executando sp_returnCupDigitacao com CTL_STA = 1`);
 
     const request = pool.request();
-    request.input('CTL_STA', sql.Int, 1); // Nome correto do parâmetro
+    request.input('CTL_STA', sql.Int, 1);
 
     const result = await request.execute('sp_returnCupDigitacao');
 
@@ -322,8 +336,7 @@ app.post('/api/consultar-produtos-gerais', async (req, res) => {
   }
 });
 
-
-// NOVO ENDPOINT: Para listar acertos pendentes do promotor (Chamada da sp_CobrancaAcerto)
+// ENDPOINT: Para listar acertos pendentes do promotor (Chamada da sp_CobrancaAcerto)
 app.post('/api/listar-acertos-promotor', async (req, res) => {
   try {
     const { CLI_COD } = req.body;
@@ -349,7 +362,7 @@ app.post('/api/listar-acertos-promotor', async (req, res) => {
     request.input('EMP_COD', sql.Int, 0);
     request.input('ATRASADO', sql.Bit, 0);
     request.input('RevCod', sql.Int, 0);
-    request.input('TIPO', sql.Int, 4); // 4 = somente header
+    request.input('TIPO', sql.Int, 4);
     request.input('EndCompleto', sql.Bit, 0);
     request.input('CliCod', sql.Int, CLI_COD);
 
@@ -371,9 +384,7 @@ app.post('/api/listar-acertos-promotor', async (req, res) => {
   }
 });
 
-
-
-// ========== ENDPOINT: Consultar Regras de Desconto ==========
+// ENDPOINT: Consultar Regras de Desconto
 app.post('/api/consultar-regras-desconto', async (req, res) => {
     try {
         const { PED_COD } = req.body;
@@ -435,7 +446,6 @@ app.post('/api/consultar-regras-desconto', async (req, res) => {
         });
     }
 });
-
 
 app.listen(PORT, () => {
   console.log(`🚀 Servidor rodando na porta ${PORT}`);
