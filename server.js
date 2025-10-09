@@ -14,11 +14,61 @@ app.get('/', (req, res) => {
 });
 
 
-
-
-
 // Endpoint para consultar itens do pedido via REV_COD ou PED_COD
 // NOTA: Este endpoint não precisa de alterações, pois a SP retorna os novos campos automaticamente
+app.post('/api/sp-consulta-ipe-via-rev', async (req, res) => {
+  try {
+    const { REV_COD, PED_COD } = req.body;
+
+    if ((REV_COD === undefined || REV_COD === null) && (PED_COD === undefined || PED_COD === null)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Pelo menos um dos parâmetros (REV_COD ou PED_COD) é obrigatório.'
+      });
+    }
+
+    const pool = await getPool();
+    if (!pool) {
+      return res.status(500).json({
+        success: false,
+        error: 'Não foi possível conectar ao banco de dados.'
+      });
+    }
+
+    const request = pool.request();
+
+    if (PED_COD !== undefined && PED_COD !== null) {
+      request.input('PED_COD', sql.Int, parseInt(PED_COD.toString() || '0'));
+      console.log(`📊 [sp-ConsultaIpeViaRev] Executando SP para PED_COD: ${PED_COD}`);
+    } else {
+      request.input('REV_COD', sql.Int, parseInt(REV_COD.toString() || '0'));
+      console.log(`📊 [sp-ConsultaIpeViaRev] Executando SP para REV_COD: ${REV_COD}`);
+    }
+
+    const result = await request.execute('sp_ConsultaIpeViaRev');
+
+    console.log(`✅ [sp-ConsultaIpeViaRev] SP executada com sucesso. Registros: ${result.recordset.length}`);
+
+    res.json({
+      success: true,
+      data: result.recordset
+    });
+
+  } catch (error) {
+    console.error('❌ [sp-ConsultaIpeViaRev] Erro na SP:', error.message);
+    res.status(500).json({
+      success: false,
+      error: 'Erro interno do servidor ao executar Stored Procedure. Detalhes: ' + error.message
+    });
+  }
+});
+
+
+
+
+
+// Endpoint para atualizar status de itens IPE ou inserir/deletar
+// ATUALIZADO: INSERT sem CUP_TAM (campo não existe na CAD_IPE)
 app.post('/api/atualizar-status-itens-ipe', async (req, res) => {
   try {
     const { itens } = req.body;
