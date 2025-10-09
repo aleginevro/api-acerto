@@ -106,14 +106,14 @@ app.post('/api/atualizar-status-itens-ipe', async (req, res) => {
       console.log(`  - Item.IPE_COD: ${item.IPE_COD}`);
       console.log(`  - Item.IPE_STA: ${item.IPE_STA}`);
       console.log(`  - Item.FORA_DO_PEDIDO: ${item.FORA_DO_PEDIDO}`);
-      console.log(`  - Item.CUP_CDI: ${item.CUP_CDI}`); // Mantido para referência no log
-      console.log(`  - Item.CUP_REF: ${item.CUP_REF}`);
+      console.log(`  - Item.CUP_CDI: ${item.CUP_CDI}`); // Mantido para referência no log (não usado no INSERT/UPDATE no SQL Server)
+      console.log(`  - Item.CUP_REF: ${item.CUP_REF}`); // Valor do frontend que vai para PRO_CDC
       console.log(`  - Item.IPE_DFP: ${item.IPE_DFP}`);
       console.log(`  - Item.IPE_DDV: ${item.IPE_DDV}`);
       console.log(`  - Item.USU_DEV: ${item.USU_DEV}`);
       console.log(`  - Item.CUP_COD: ${item.CUP_COD}`);
       console.log(`  - Item.UNI_COD: ${item.UNI_COD}`);
-      console.log(`  - Item.REMARCADO_PROX_MES (do frontend): ${item.REMARCADO_PROX_MES}`); // Mantido para referência no log (valor do frontend)
+      console.log(`  - Item.REMARCADO_PROX_MES (do frontend): ${item.REMARCADO_PROX_MES}`); // Valor do frontend que vai para IPE_PPM
       console.log(`--- Fim do item ${i} ---`);
 
 
@@ -145,25 +145,27 @@ app.post('/api/atualizar-status-itens-ipe', async (req, res) => {
           
           request.input('REV_COD', sql.Int, parseInt(item.REV_COD));
           request.input('PED_COD', sql.Int, parseInt(item.PED_COD));
-          request.input('CUP_REF', sql.VarChar(50), String(item.CUP_REF));
+          // Corrigido: `PRO_CDC` é o nome da coluna no banco, mas recebe o valor de `item.CUP_REF` do frontend
+          request.input('PRO_CDC', sql.VarChar(50), String(item.CUP_REF)); 
           request.input('PRO_DES', sql.VarChar(255), String(item.PRO_DES));
           request.input('IPE_VTL', sql.Decimal(10, 2), parseFloat(item.IPE_VTL));
           request.input('IPE_STA', sql.Int, parseInt(item.IPE_STA));
           request.input('IPE_DFP', sql.Int, parseInt(item.IPE_DFP)); // Flag: 1 = fora do pedido
-          request.input('IPE_DDV', sql.DateTime, new Date(item.IPE_DDV)); // Data/hora exata da devolução
-          request.input('USU_DEV', sql.VarChar(50), String(item.USU_DEV)); // Usuário que fez a devolução
-          request.input('CUP_COD', sql.VarChar(50), String(item.CUP_COD)); // Código CUP (se houver, do produto geral)
-          request.input('UNI_COD', sql.VarChar(50), String(item.UNI_COD)); // Código UNI (se houver, do produto geral)
-          request.input('IPE_PPM', sql.Bit, item.REMARCADO_PROX_MES ? 1 : 0); // NOVO: Mapeia REMARCADO_PROX_MES para IPE_PPM
+          request.input('IPE_DDV', sql.DateTime, new Date(item.IPE_DDV));
+          request.input('USU_DEV', sql.VarChar(50), String(item.USU_DEV));
+          request.input('CUP_COD', sql.VarChar(50), String(item.CUP_COD));
+          request.input('UNI_COD', sql.VarChar(50), String(item.UNI_COD));
+          // Corrigido: Usando IPE_PPM (Pedido de Próximo Mês)
+          request.input('IPE_PPM', sql.Bit, item.REMARCADO_PROX_MES ? 1 : 0);
 
           const queryInsert = `
             INSERT INTO CAD_IPE (
-              REV_COD, PED_COD, CUP_REF, PRO_DES, IPE_VTL, IPE_STA,
+              REV_COD, PED_COD, PRO_CDC, PRO_DES, IPE_VTL, IPE_STA,
               IPE_DFP, IPE_DDV, USU_DEV, CUP_COD, UNI_COD, IPE_PPM
             )
             OUTPUT INSERTED.IPE_COD
             VALUES (
-              @REV_COD, @PED_COD, @CUP_REF, @PRO_DES, @IPE_VTL, @IPE_STA,
+              @REV_COD, @PED_COD, @PRO_CDC, @PRO_DES, @IPE_VTL, @IPE_STA,
               @IPE_DFP, @IPE_DDV, @USU_DEV, @CUP_COD, @UNI_COD, @IPE_PPM
             );
           `;
@@ -171,76 +173,90 @@ app.post('/api/atualizar-status-itens-ipe', async (req, res) => {
           // Log da query SQL antes de ser executada
           console.log('  --- Query INSERT a ser executada ---');
           console.log(queryInsert);
+          console.log('  --- Parâmetros do INSERT ---');
+          console.log({
+              REV_COD: item.REV_COD,
+              PED_COD: item.PED_COD,
+              PRO_CDC: item.CUP_REF, // Valor de CUP_REF do frontend
+              PRO_DES: item.PRO_DES,
+              IPE_VTL: item.IPE_VTL,
+              IPE_STA: item.IPE_STA,
+              IPE_DFP: item.IPE_DFP,
+              IPE_DDV: item.IPE_DDV,
+              USU_DEV: item.USU_DEV,
+              CUP_COD: item.CUP_COD,
+              UNI_COD: item.UNI_COD,
+              IPE_PPM: item.REMARCADO_PROX_MES // Valor de REMARCADO_PROX_MES do frontend
+          });
           console.log('  --- Fim da Query INSERT ---');
 
           const result = await request.query(queryInsert);
           const insertedIpeCod = result.recordset[0].IPE_COD;
+          inseridos++;
           itensInseridos.push({
             indice: i,
             IPE_COD: insertedIpeCod,
-            CUP_CDI: item.CUP_CDI // Apenas para o frontend identificar qual item foi inserido
+            CUP_CDI: item.CUP_CDI // Ainda retornamos CUP_CDI para o frontend para identificação
           });
-          inseridos++;
-          console.log(`  ✅ INSERT efetuado. Novo IPE_COD: ${insertedIpeCod}`);
+          sincronizadosDetalhes.push({ status: 'inserted', IPE_COD: insertedIpeCod });
         }
-        // Cenário 3: Item DENTRO DO PEDIDO ORIGINAL (IPE_COD existe) e precisa atualizar status ou remarcação
-        else if (item.IPE_COD) {
-          console.log(`  🔁 UPDATE: Item dentro do pedido original - Índice ${i}. IPE_COD: ${item.IPE_COD}`);
-          
-          request.input('IPE_COD', sql.Int, item.IPE_COD);
-          request.input('IPE_STA', sql.Int, parseInt(item.IPE_STA));
-          request.input('IPE_DDV', sql.DateTime, item.IPE_DDV ? new Date(item.IPE_DDV) : null); // Pode ser null
-          request.input('USU_DEV', sql.VarChar(50), item.USU_DEV || null); // Pode ser null
-          request.input('IPE_PPM', sql.Bit, item.REMARCADO_PROX_MES ? 1 : 0); // NOVO: Mapeia REMARCADO_PROX_MES para IPE_PPM
+        // Cenário 3: Item DENTRO DO PEDIDO ou item FORA DO PEDIDO já inserido, com mudança de status
+        // (1 para 9, ou 9 para 1, ou alteração de IPE_PPM)
+        else { // Update existing item within or outside the order
+          console.log(`  🔄 UPDATE: Item do pedido ou fora do pedido com mudança de status - Índice ${i}. IPE_COD: ${item.IPE_COD}`);
+          request.input('IPE_COD_UPDT', sql.Int, item.IPE_COD);
+          request.input('IPE_STA_UPDT', sql.Int, parseInt(item.IPE_STA));
+          request.input('IPE_DFP_UPDT', sql.Int, parseInt(item.IPE_DFP)); // Pode ser 0 (se voltar para pedido) ou 1 (se permanecer fora)
+          request.input('IPE_DDV_UPDT', sql.DateTime, item.IPE_DDV ? new Date(item.IPE_DDV) : null);
+          request.input('USU_DEV_UPDT', sql.VarChar(50), item.USU_DEV ? String(item.USU_DEV) : null);
+          // Corrigido: Usando IPE_PPM (Pedido de Próximo Mês) para o update
+          request.input('IPE_PPM_UPDT', sql.Bit, item.REMARCADO_PROX_MES ? 1 : 0);
 
           const queryUpdate = `
             UPDATE CAD_IPE
             SET 
-              IPE_STA = @IPE_STA,
-              IPE_DDV = @IPE_DDV,
-              USU_DEV = @USU_DEV,
-              IPE_PPM = @IPE_PPM
-            WHERE IPE_COD = @IPE_COD;
+              IPE_STA = @IPE_STA_UPDT,
+              IPE_DFP = @IPE_DFP_UPDT,
+              IPE_DDV = @IPE_DDV_UPDT,
+              USU_DEV = @USU_DEV_UPDT,
+              IPE_PPM = @IPE_PPM_UPDT
+            WHERE IPE_COD = @IPE_COD_UPDT;
           `;
-          
-          // Log da query SQL antes de ser executada
+
           console.log('  --- Query UPDATE a ser executada ---');
           console.log(queryUpdate);
+          console.log('  --- Parâmetros do UPDATE ---');
+          console.log({
+              IPE_COD_UPDT: item.IPE_COD,
+              IPE_STA_UPDT: item.IPE_STA,
+              IPE_DFP_UPDT: item.IPE_DFP,
+              IPE_DDV_UPDT: item.IPE_DDV,
+              USU_DEV_UPDT: item.USU_DEV,
+              IPE_PPM_UPDT: item.REMARCADO_PROX_MES
+          });
           console.log('  --- Fim da Query UPDATE ---');
 
-          const result = await request.query(queryUpdate);
-          if (result.rowsAffected[0] > 0) {
+          const updateResult = await request.query(queryUpdate);
+          if (updateResult.rowsAffected[0] > 0) {
             sincronizados++;
             itensAtualizados.push({ IPE_COD: item.IPE_COD });
             console.log(`  ✅ UPDATE efetuado para IPE_COD: ${item.IPE_COD}`);
           } else {
-            console.log(`  ⚠️ UPDATE não afetou linhas para IPE_COD: ${item.IPE_COD}. Item não encontrado ou sem alteração.`);
+            console.log(`  ⚠️ UPDATE não afetou linhas para IPE_COD: ${item.IPE_COD}. Item pode não existir ou status já é o mesmo.`);
           }
-        } else {
-          console.log(`  🚫 IGNORADO: Item ${i} sem IPE_COD e não é "fora do pedido", ou com IPE_STA inesperado.`);
         }
-
-      } catch (dbError) {
-        console.error(`❌ Erro ao processar item índice ${i}:`, dbError.message);
-        // Em caso de erro em um item, faz o rollback da transação
-        await transaction.rollback();
-        console.log('--- TRANSAÇÃO COM ROLLBACK ---');
-        return res.status(500).json({
-          success: false,
-          error: `Erro ao sincronizar item ${item.CUP_CDI || item.CUP_REF}: ${dbError.message}`,
-          details: dbError.message
-        });
+      } catch (sqlError) {
+        console.error(`❌ Erro ao processar item índice ${i}:`, sqlError.message);
+        throw { message: `Erro ao processar item ${item.CUP_CDI || item.IPE_COD}: ${sqlError.message}` }; // Rejeita a transação
       }
     }
 
     await transaction.commit();
-    console.log('--- TRANSAÇÃO COMITADA ---');
+    console.log('✅ Transação finalizada com sucesso!');
 
-    console.log('🏁 ===== FIM DA SINCRONIZAÇÃO (sucesso) =====');
-
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
-      message: 'Itens sincronizados com sucesso!',
+      message: 'Sincronização realizada com sucesso!',
       sincronizados: sincronizados,
       inseridos: inseridos,
       deletados: deletados,
@@ -251,12 +267,20 @@ app.post('/api/atualizar-status-itens-ipe', async (req, res) => {
       }
     });
 
-  } catch (error) {
-    console.error('💥 ERRO GERAL NO ENDPOINT /api/atualizar-status-itens-ipe:', error);
+  } catch (err) {
+    console.error('💥 ERRO FATAL no endpoint /api/atualizar-status-itens-ipe:', err);
+    if (transaction && transaction.isActive) {
+      try {
+        await transaction.rollback();
+        console.log('❌ Transação rollback efetuado.');
+      } catch (rollbackErr) {
+        console.error('❌ Erro durante o rollback:', rollbackErr);
+      }
+    }
     res.status(500).json({
       success: false,
-      error: 'Erro interno do servidor ao sincronizar devoluções',
-      details: error.message
+      error: 'Erro interno ao sincronizar dados.',
+      details: err.message
     });
   }
 });
