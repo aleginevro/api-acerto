@@ -147,6 +147,8 @@ app.post('/api/atualizar-status-itens-ipe', async (req, res) => {
           
           // IPE_CODI fixo em 0 para não gerar erro de null
           request.input('IPE_CODI', sql.Int, 0); 
+          // PRO_QTDE fixo em 1 para atender a obrigatoriedade
+          request.input('PRO_QTDE', sql.Int, 1);
           request.input('PED_COD', sql.Int, parseInt(item.PED_COD));
           // Corrigido: `PRO_CDC` é o nome da coluna no banco, mas recebe o valor de `item.CUP_REF` do frontend
           request.input('PRO_CDC', sql.VarChar(50), String(item.CUP_REF)); 
@@ -154,7 +156,7 @@ app.post('/api/atualizar-status-itens-ipe', async (req, res) => {
           request.input('IPE_VTL', sql.Decimal(10, 2), parseFloat(item.IPE_VTL));
           request.input('IPE_STA', sql.Int, parseInt(item.IPE_STA));
           request.input('IPE_DFP', sql.Int, parseInt(item.IPE_DFP)); // Flag: 1 = fora do pedido
-          request.input('IPE_DDV', sql.DateTime, new Date(item.IPE_DDV));
+          request.input('IPE_DDV', sql.DateTime, item.IPE_DDV ? new Date(item.IPE_DDV) : null);
           request.input('USU_DEV', sql.VarChar(50), String(item.USU_DEV));
           request.input('CUP_COD', sql.VarChar(50), String(item.CUP_COD));
           request.input('UNI_COD', sql.VarChar(50), String(item.UNI_COD));
@@ -163,12 +165,12 @@ app.post('/api/atualizar-status-itens-ipe', async (req, res) => {
 
           const queryInsert = `
             INSERT INTO CAD_IPE (
-              IPE_CODI, PED_COD, PRO_CDC, PRO_DES, IPE_VTL, IPE_STA,
+              IPE_CODI, PRO_QTDE, PED_COD, PRO_CDC, PRO_DES, IPE_VTL, IPE_STA,
               IPE_DFP, IPE_DDV, USU_DEV, CUP_COD, UNI_COD, IPE_PPM
             )
             OUTPUT INSERTED.IPE_COD
             VALUES (
-              @IPE_CODI, @PED_COD, @PRO_CDC, @PRO_DES, @IPE_VTL, @IPE_STA,
+              @IPE_CODI, @PRO_QTDE, @PED_COD, @PRO_CDC, @PRO_DES, @IPE_VTL, @IPE_STA,
               @IPE_DFP, @IPE_DDV, @USU_DEV, @CUP_COD, @UNI_COD, @IPE_PPM
             );
           `;
@@ -179,6 +181,7 @@ app.post('/api/atualizar-status-itens-ipe', async (req, res) => {
           console.log('  --- Parâmetros do INSERT ---');
           console.log({
               IPE_CODI: 0,
+              PRO_QTDE: 1, // Fixado em 1
               PED_COD: item.PED_COD,
               PRO_CDC: item.CUP_REF, // Valor de CUP_REF do frontend
               PRO_DES: item.PRO_DES,
