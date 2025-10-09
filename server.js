@@ -145,7 +145,8 @@ app.post('/api/atualizar-status-itens-ipe', async (req, res) => {
         else if (item.FORA_DO_PEDIDO && item.IPE_STA === 9) {
           console.log(`  ➕ INSERT: Item fora do pedido - Índice ${i}`);
           
-          // REV_COD removido do INSERT, pois não existe na CAD_IPE
+          // IPE_CODI fixo em 0 para não gerar erro de null
+          request.input('IPE_CODI', sql.Int, 0); 
           request.input('PED_COD', sql.Int, parseInt(item.PED_COD));
           // Corrigido: `PRO_CDC` é o nome da coluna no banco, mas recebe o valor de `item.CUP_REF` do frontend
           request.input('PRO_CDC', sql.VarChar(50), String(item.CUP_REF)); 
@@ -162,12 +163,12 @@ app.post('/api/atualizar-status-itens-ipe', async (req, res) => {
 
           const queryInsert = `
             INSERT INTO CAD_IPE (
-              PED_COD, PRO_CDC, PRO_DES, IPE_VTL, IPE_STA,
+              IPE_CODI, PED_COD, PRO_CDC, PRO_DES, IPE_VTL, IPE_STA,
               IPE_DFP, IPE_DDV, USU_DEV, CUP_COD, UNI_COD, IPE_PPM
             )
             OUTPUT INSERTED.IPE_COD
             VALUES (
-              @PED_COD, @PRO_CDC, @PRO_DES, @IPE_VTL, @IPE_STA,
+              @IPE_CODI, @PED_COD, @PRO_CDC, @PRO_DES, @IPE_VTL, @IPE_STA,
               @IPE_DFP, @IPE_DDV, @USU_DEV, @CUP_COD, @UNI_COD, @IPE_PPM
             );
           `;
@@ -177,7 +178,7 @@ app.post('/api/atualizar-status-itens-ipe', async (req, res) => {
           console.log(queryInsert);
           console.log('  --- Parâmetros do INSERT ---');
           console.log({
-              // REV_COD: item.REV_COD, // Removido dos parâmetros do INSERT
+              IPE_CODI: 0,
               PED_COD: item.PED_COD,
               PRO_CDC: item.CUP_REF, // Valor de CUP_REF do frontend
               PRO_DES: item.PRO_DES,
