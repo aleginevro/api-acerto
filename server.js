@@ -200,7 +200,8 @@ app.post('/api/atualizar-status-itens-ipe', async (req, res) => {
       error: 'Erro interno do servidor ao sincronizar devoluções.',
       details: err.message
     });
-
+  }
+});
 
 
 
