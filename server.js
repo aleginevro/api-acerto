@@ -106,6 +106,8 @@ app.post('/api/atualizar-status-itens-ipe', async (req, res) => {
       console.log(`  - Item.IPE_COD: ${item.IPE_COD}`);
       console.log(`  - Item.IPE_STA: ${item.IPE_STA}`);
       console.log(`  - Item.FORA_DO_PEDIDO: ${item.FORA_DO_PEDIDO}`);
+      console.log(`  - Item.REV_COD: ${item.REV_COD}`); // Mantido para referência no log
+      console.log(`  - Item.PED_COD: ${item.PED_COD}`); // Mantido para referência no log
       console.log(`  - Item.CUP_CDI: ${item.CUP_CDI}`); // Mantido para referência no log (não usado no INSERT/UPDATE no SQL Server)
       console.log(`  - Item.CUP_REF: ${item.CUP_REF}`); // Valor do frontend que vai para PRO_CDC
       console.log(`  - Item.IPE_DFP: ${item.IPE_DFP}`);
@@ -143,7 +145,7 @@ app.post('/api/atualizar-status-itens-ipe', async (req, res) => {
         else if (item.FORA_DO_PEDIDO && item.IPE_STA === 9) {
           console.log(`  ➕ INSERT: Item fora do pedido - Índice ${i}`);
           
-          request.input('REV_COD', sql.Int, parseInt(item.REV_COD));
+          // REV_COD removido do INSERT, pois não existe na CAD_IPE
           request.input('PED_COD', sql.Int, parseInt(item.PED_COD));
           // Corrigido: `PRO_CDC` é o nome da coluna no banco, mas recebe o valor de `item.CUP_REF` do frontend
           request.input('PRO_CDC', sql.VarChar(50), String(item.CUP_REF)); 
@@ -160,12 +162,12 @@ app.post('/api/atualizar-status-itens-ipe', async (req, res) => {
 
           const queryInsert = `
             INSERT INTO CAD_IPE (
-              REV_COD, PED_COD, PRO_CDC, PRO_DES, IPE_VTL, IPE_STA,
+              PED_COD, PRO_CDC, PRO_DES, IPE_VTL, IPE_STA,
               IPE_DFP, IPE_DDV, USU_DEV, CUP_COD, UNI_COD, IPE_PPM
             )
             OUTPUT INSERTED.IPE_COD
             VALUES (
-              @REV_COD, @PED_COD, @PRO_CDC, @PRO_DES, @IPE_VTL, @IPE_STA,
+              @PED_COD, @PRO_CDC, @PRO_DES, @IPE_VTL, @IPE_STA,
               @IPE_DFP, @IPE_DDV, @USU_DEV, @CUP_COD, @UNI_COD, @IPE_PPM
             );
           `;
@@ -175,7 +177,7 @@ app.post('/api/atualizar-status-itens-ipe', async (req, res) => {
           console.log(queryInsert);
           console.log('  --- Parâmetros do INSERT ---');
           console.log({
-              REV_COD: item.REV_COD,
+              // REV_COD: item.REV_COD, // Removido dos parâmetros do INSERT
               PED_COD: item.PED_COD,
               PRO_CDC: item.CUP_REF, // Valor de CUP_REF do frontend
               PRO_DES: item.PRO_DES,
