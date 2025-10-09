@@ -68,6 +68,12 @@ app.post('/api/atualizar-status-itens-ipe', async (req, res) => {
   try {
     const { itens } = req.body;
 
+    // Log que mostra os itens INTEIROS que o server.js RECEBEU do Base44
+    console.log('--- SERVER.JS RECEBEU ESTES ITENS DO BASE44 ---');
+    console.log(JSON.stringify(itens, null, 2));
+    console.log('--- FIM DO RECEBIMENTO ---');
+
+
     if (!Array.isArray(itens) || itens.length === 0) {
       return res.status(400).json({
         success: false,
@@ -76,227 +82,88 @@ app.post('/api/atualizar-status-itens-ipe', async (req, res) => {
     }
 
     const pool = await getPool();
-    if (!pool) {
-      return res.status(500).json({
-        success: false,
-        error: 'Não foi possível conectar ao banco de dados.'
-      });
-    }
-
-    console.log(`🔄 [atualizar-status-itens-ipe] Iniciando sincronização de ${itens.length} itens`);
-
-    let sincronizados = 0;
-    let inseridos = 0;
-    let deletados = 0;
-    const erros = [];
-    const detalhes = {
-      itensInseridos: [], // Array com { indice, IPE_COD, CUP_CDI }
-      itensAtualizados: [], // Array com { IPE_COD, IPE_STA }
-      itensDeletados: [] // Array com { IPE_COD, CUP_CDI }
-    };
+    // ... código existente ...
 
     for (let i = 0; i < itens.length; i++) {
       const item = itens[i];
       
+      // Log detalhado de CADA ITEM dentro do loop
+      console.log(`--- Processando item ${i} ---`);
+      console.log(`Item.IPE_COD: ${item.IPE_COD}`);
+      console.log(`Item.IPE_STA: ${item.IPE_STA}`);
+      console.log(`Item.FORA_DO_PEDIDO: ${item.FORA_DO_PEDIDO}`);
+      console.log(`Item.CUP_CDI: ${item.CUP_CDI}`);
+      console.log(`Item.CUP_REF: ${item.CUP_REF}`);
+      console.log(`Item.IPE_DFP: ${item.IPE_DFP}`);
+      console.log(`Item.IPE_DDV: ${item.IPE_DDV}`);
+      console.log(`Item.USU_DEV: ${item.USU_DEV}`);
+      console.log(`Item.CUP_COD: ${item.CUP_COD}`);
+      console.log(`Item.UNI_COD: ${item.UNI_COD}`);
+      console.log(`Item.REMARCADO_PROX_MES: ${item.REMARCADO_PROX_MES}`);
+      console.log(`--- Fim do item ${i} ---`);
+
+
       try {
         const request = pool.request();
 
-        // ===== CASO ESPECIAL: DELETE de item fora do pedido desfeito =====
-        // Quando um item fora do pedido é "desfeito" (IPE_STA = 1),
-        // significa que ele não deveria mais existir no banco, então fazemos DELETE
-        if (item.FORA_DO_PEDIDO && item.IPE_STA === 1) {
-          console.log(`  🗑️ DELETE: Item fora do pedido desfeito - Índice ${i}`);
-          
-          // PRIORIDADE 1: Se o item já tem IPE_COD, usar ele diretamente (MAIS SEGURO)
-          if (item.IPE_COD) {
-            request.input('IPE_COD', sql.Int, parseInt(item.IPE_COD));
-            request.input('IPE_DFP', sql.Int, 1); // Confirma que é fora do pedido
+        // ... seu código para DELETE (item.FORA_DO_PEDIDO && item.IPE_STA === 1) ...
 
-            const queryDeleteByCode = `
-              DELETE FROM CAD_IPE 
-              WHERE IPE_COD = @IPE_COD 
-                AND IPE_DFP = @IPE_DFP
-            `;
-
-            console.log(`  🔍 DELETE por IPE_COD=${item.IPE_COD} (IPE_DFP=1)`);
-
-            const result = await request.query(queryDeleteByCode);
-
-            if (result.rowsAffected[0] > 0) {
-              deletados++;
-              detalhes.itensDeletados.push({ 
-                IPE_COD: item.IPE_COD, 
-                CUP_CDI: item.CUP_CDI 
-              });
-              console.log(`  ✅ Item IPE_COD=${item.IPE_COD} DELETADO com sucesso`);
-            } else {
-              erros.push({ item, erro: `Nenhum registro deletado para IPE_COD=${item.IPE_COD}` });
-              console.log(`  ⚠️ Nenhum registro deletado para IPE_COD=${item.IPE_COD}`);
-            }
-          } 
-          // PRIORIDADE 2: Se NÃO tem IPE_COD, usar REV_COD + PED_COD + CUP_CDI
-          else {
-            if (!item.REV_COD || !item.PED_COD || !item.CUP_CDI) {
-              erros.push({ item, erro: 'DELETE rejeitado: faltam dados críticos (REV_COD, PED_COD ou CUP_CDI)' });
-              console.log(`  ⚠️ DELETE rejeitado por falta de dados críticos`);
-              continue;
-            }
-
-            request.input('REV_COD', sql.Int, parseInt(item.REV_COD));
-            request.input('PED_COD', sql.Int, parseInt(item.PED_COD));
-            request.input('CUP_CDI', sql.VarChar(50), String(item.CUP_CDI));
-            request.input('IPE_DFP', sql.Int, 1);
-
-            const queryDeleteByFields = `
-              DELETE FROM CAD_IPE 
-              WHERE IPE_DFP = @IPE_DFP 
-                AND REV_COD = @REV_COD 
-                AND PED_COD = @PED_COD 
-                AND CUP_CDI = @CUP_CDI
-            `;
-
-            console.log(`  🔍 DELETE por campos: REV_COD=${item.REV_COD}, PED_COD=${item.PED_COD}, CUP_CDI=${item.CUP_CDI}`);
-
-            const result = await request.query(queryDeleteByFields);
-
-            if (result.rowsAffected[0] > 0) {
-              deletados++;
-              detalhes.itensDeletados.push({ 
-                CUP_CDI: item.CUP_CDI,
-                REV_COD: item.REV_COD,
-                PED_COD: item.PED_COD
-              });
-              console.log(`  ✅ Item CUP_CDI=${item.CUP_CDI} DELETADO com sucesso`);
-            } else {
-              console.log(`  ⚠️ Nenhum registro deletado para CUP_CDI=${item.CUP_CDI}`);
-            }
-          }
-          
-          continue; // Pula para o próximo item
-        }
-
-        // ===== CASO 1: Item já tem IPE_COD (existe no pedido original) - UPDATE =====
-        if (item.IPE_COD) {
-          request.input('IPE_STA', sql.Int, item.IPE_STA);
-          request.input('IPE_COD', sql.Int, parseInt(item.IPE_COD));
-
-          const queryUpdate = 'UPDATE CAD_IPE SET IPE_STA = @IPE_STA WHERE IPE_COD = @IPE_COD';
-
-          console.log(`  📝 UPDATE: IPE_COD=${item.IPE_COD}, IPE_STA=${item.IPE_STA}`);
-
-          const result = await request.query(queryUpdate);
-
-          if (result.rowsAffected[0] > 0) {
-            sincronizados++;
-            detalhes.itensAtualizados.push({ 
-              IPE_COD: item.IPE_COD, 
-              IPE_STA: item.IPE_STA 
-            });
-            console.log(`  ✅ Item IPE_COD=${item.IPE_COD} atualizado para IPE_STA=${item.IPE_STA}`);
-          } else {
-            erros.push({ item, erro: `Nenhum registro atualizado para IPE_COD=${item.IPE_COD}` });
-            console.log(`  ⚠️ Nenhum registro atualizado para IPE_COD=${item.IPE_COD}`);
-          }
-        }
-        // ===== CASO 2: Item NÃO tem IPE_COD (é um item "fora do pedido") - INSERT =====
-        else {
+        // --- ESTE É O BLOCO DE INSERT QUE NOS INTERESSA PARA ITENS FORA DO PEDIDO ---
+        if (item.FORA_DO_PEDIDO && item.IPE_STA === 9) { // Apenas INSERIR se for fora do pedido E status 9
           console.log(`  ➕ INSERT: Item fora do pedido - Índice ${i}`);
           
-          // Validar campos essenciais
-          if (!item.REV_COD || !item.PED_COD) {
-            erros.push({ item, erro: 'INSERT rejeitado: faltam REV_COD ou PED_COD' });
-            console.log(`  ⚠️ INSERT rejeitado por falta de REV_COD ou PED_COD`);
-            continue;
-          }
-
-          // Preparar parâmetros para INSERT (SEM CUP_TAM - não existe na CAD_IPE)
+          // Verifique aqui se todos os campos estão chegando como esperado
           request.input('REV_COD', sql.Int, parseInt(item.REV_COD));
           request.input('PED_COD', sql.Int, parseInt(item.PED_COD));
-          request.input('CUP_CDI', sql.VarChar(50), item.CUP_CDI ? String(item.CUP_CDI) : null);
-          request.input('CUP_CDB', sql.VarChar(50), item.CUP_CDB ? String(item.CUP_CDB) : null);
-          request.input('CUP_REF', sql.VarChar(50), item.CUP_REF ? String(item.CUP_REF) : null);
-          request.input('PRO_DES', sql.VarChar(255), item.PRO_DES ? String(item.PRO_DES) : null);
-          request.input('IPE_VTL', sql.Decimal(18, 2), item.IPE_VTL ? parseFloat(item.IPE_VTL) : 0);
-          request.input('IPE_STA', sql.Int, item.IPE_STA || 9); // Default 9 = devolvido
-          request.input('CUP_COD', sql.Int, item.CUP_COD ? parseInt(item.CUP_COD) : null);
-          request.input('UNI_COD', sql.Int, item.UNI_COD ? parseInt(item.UNI_COD) : null);
-          
-          // NOVOS CAMPOS para itens fora do pedido
-          request.input('IPE_DFP', sql.Int, 1); // 1 = fora do pedido
-          request.input('IPE_DDV', sql.DateTime, item.IPE_DDV ? new Date(item.IPE_DDV) : new Date());
-          request.input('USU_DEV', sql.VarChar(50), item.USU_DEV || 'offline');
+          request.input('CUP_CDI', sql.VarChar(50), String(item.CUP_CDI));
+          request.input('CUP_REF', sql.VarChar(50), String(item.CUP_REF));
+          // REMOVIDO: request.input('CUP_TAM', sql.VarChar(50), item.CUP_TAM); // Não existe na CAD_IPE
+          request.input('PRO_DES', sql.VarChar(255), String(item.PRO_DES));
+          request.input('IPE_VTL', sql.Decimal(10, 2), parseFloat(item.IPE_VTL));
+          request.input('IPE_STA', sql.Int, parseInt(item.IPE_STA));
+          request.input('IPE_DFP', sql.Int, parseInt(item.IPE_DFP)); // Novo campo
+          request.input('IPE_DDV', sql.DateTime, new Date(item.IPE_DDV)); // Novo campo
+          request.input('USU_DEV', sql.VarChar(50), String(item.USU_DEV)); // Novo campo
+          request.input('CUP_COD', sql.VarChar(50), String(item.CUP_COD)); // Novo campo
+          request.input('UNI_COD', sql.VarChar(50), String(item.UNI_COD)); // Novo campo
+          request.input('REMARCADO_PROX_MES', sql.Bit, item.REMARCADO_PROX_MES ? 1 : 0); // Novo campo
 
-          // INSERT com OUTPUT para retornar o IPE_COD gerado (SEM CUP_TAM)
           const queryInsert = `
             INSERT INTO CAD_IPE (
-              REV_COD, PED_COD, CUP_CDI, CUP_CDB, CUP_REF, 
-              PRO_DES, IPE_VTL, IPE_STA, CUP_COD, UNI_COD,
-              IPE_DFP, IPE_DDV, USU_DEV
+              REV_COD, PED_COD, CUP_CDI, CUP_REF, PRO_DES, IPE_VTL, IPE_STA,
+              IPE_DFP, IPE_DDV, USU_DEV, CUP_COD, UNI_COD, REMARCADO_PROX_MES
             )
-            OUTPUT INSERTED.IPE_COD
+            OUTPUT INSERTED.IPE_COD, INSERTED.CUP_CDI
             VALUES (
-              @REV_COD, @PED_COD, @CUP_CDI, @CUP_CDB, @CUP_REF,
-              @PRO_DES, @IPE_VTL, @IPE_STA, @CUP_COD, @UNI_COD,
-              @IPE_DFP, @IPE_DDV, @USU_DEV
-            )
+              @REV_COD, @PED_COD, @CUP_CDI, @CUP_REF, @PRO_DES, @IPE_VTL, @IPE_STA,
+              @IPE_DFP, @IPE_DDV, @USU_DEV, @CUP_COD, @UNI_COD, @REMARCADO_PROX_MES
+            );
           `;
-
-          console.log(`  🔍 INSERT com OUTPUT: REV_COD=${item.REV_COD}, PED_COD=${item.PED_COD}, CUP_CDI=${item.CUP_CDI}`);
+          
+          // Log da query SQL antes de ser executada
+          console.log('  --- Query INSERT a ser executada ---');
+          console.log(queryInsert);
+          console.log('  --- Fim da Query INSERT ---');
 
           const result = await request.query(queryInsert);
-
-          if (result.recordset && result.recordset.length > 0) {
-            const novoIPE_COD = result.recordset[0].IPE_COD;
-            inseridos++;
-            
-            // CRÍTICO: Armazenar o índice do item e o IPE_COD gerado
-            detalhes.itensInseridos.push({
-              indice: i, // Índice do item no array original
-              IPE_COD: novoIPE_COD,
-              CUP_CDI: item.CUP_CDI,
-              REV_COD: item.REV_COD,
-              PED_COD: item.PED_COD
-            });
-            
-            console.log(`  ✅ Item inserido com IPE_COD=${novoIPE_COD} (índice ${i})`);
-          } else {
-            erros.push({ item, erro: 'INSERT não retornou IPE_COD' });
-            console.log(`  ⚠️ INSERT executado mas não retornou IPE_COD`);
-          }
+          
+          // ... restante do bloco de INSERT ...
         }
-
-      } catch (itemError) {
-        erros.push({ item, erro: itemError.message });
-        console.error(`  ❌ Erro ao processar item índice ${i}:`, itemError.message);
+        // ... restante do código ...
+      } catch (err) {
+        // Log do ERRO COMPLETO do banco de dados
+        console.error(`❌ Erro ao processar item índice ${i}:`, err.message);
+        erros.push({ item, erro: err.message });
       }
     }
-
-    const mensagem = `Sincronização concluída: ${sincronizados} atualizados, ${inseridos} inseridos, ${deletados} deletados`;
-    
-    console.log(`✅ [atualizar-status-itens-ipe] ${mensagem}`);
-    if (erros.length > 0) {
-      console.log(`⚠️ [atualizar-status-itens-ipe] ${erros.length} erros encontrados`);
-    }
-
-    res.json({
-      success: true,
-      sincronizados,
-      inseridos,
-      deletados,
-      message: mensagem,
-      detalhes: detalhes, // CRÍTICO: Retornar detalhes estruturados
-      erros: erros.length > 0 ? erros : undefined
-    });
-
+    // ... código restante ...
   } catch (error) {
-    console.error('❌ [atualizar-status-itens-ipe] Erro geral:', error.message);
-    res.status(500).json({
-      success: false,
-      error: 'Erro ao processar sincronização',
-      details: error.message
-    });
+    // ... código restante ...
   }
 });
+
+
+
 
 // ENDPOINT: Para login de promotores
 app.post('/api/login-promotor', async (req, res) => {
