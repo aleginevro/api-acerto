@@ -152,6 +152,8 @@ app.post('/api/atualizar-status-itens-ipe', async (req, res) => {
           // Adicionado PRO_VAL e PRO_VNG, com o mesmo valor de IPE_VTL (valor do produto)
           request.input('PRO_VAL', sql.Decimal(10, 2), parseFloat(item.IPE_VTL));
           request.input('PRO_VNG', sql.Decimal(10, 2), parseFloat(item.IPE_VTL));
+          // Adicionado USU_LOG = 'offline' conforme solicitado
+          request.input('USU_LOG', sql.VarChar(50), 'offline');
 
           // Campos que vêm do frontend, preparados para o INSERT
           request.input('PED_COD', sql.Int, parseInt(item.PED_COD));
@@ -162,111 +164,123 @@ app.post('/api/atualizar-status-itens-ipe', async (req, res) => {
           request.input('IPE_STA', sql.Int, parseInt(item.IPE_STA));
           request.input('IPE_DFP', sql.Int, parseInt(item.IPE_DFP)); // Flag: 1 = fora do pedido
           request.input('IPE_DDV', sql.DateTime, new Date(item.IPE_DDV)); // Data/hora exata da devolução
-          request.input('USU_DEV', sql.VarChar(50), String(item.USU_DEV)); // Usuário que fez a devolução
-          request.input('CUP_COD', sql.VarChar(50), String(item.CUP_COD)); // Código do produto (pode ser NULL)
-          request.input('UNI_COD', sql.VarChar(50), String(item.UNI_COD)); // Código da unidade (pode ser NULL)
-          request.input('IPE_PPM', sql.Bit, item.REMARCADO_PROX_MES ? 1 : 0); // Campo 'Pedido Próximo Mês'
+          request.input('USU_DEV', sql.VarChar(50), String(item.USU_DEV)); // Usuário que fez a devolução (do frontend)
+          request.input('CUP_COD', sql.VarChar(50), String(item.CUP_COD)); // CUP_COD do item geral
+          request.input('UNI_COD', sql.VarChar(50), String(item.UNI_COD)); // UNI_COD do item geral
+          request.input('IPE_PPM', sql.Bit, item.REMARCADO_PROX_MES ? 1 : 0); // Remarcado para próximo mês
 
           const queryInsert = `
             INSERT INTO CAD_IPE (
-              IPE_CODI, PRO_QTD, PED_COD, PRO_CDC, PRO_DES, IPE_VTL, IPE_STA,
-              IPE_DFP, IPE_DDV, USU_DEV, CUP_COD, UNI_COD, IPE_PPM, PRO_VAL, PRO_VNG
+              IPE_CODI, PRO_QTD, PRO_VAL, PRO_VNG, USU_LOG,
+              PED_COD, PRO_CDC, PRO_DES, IPE_VTL, IPE_STA,
+              IPE_DFP, IPE_DDV, USU_DEV, CUP_COD, UNI_COD, IPE_PPM
             )
             OUTPUT INSERTED.IPE_COD
             VALUES (
-              @IPE_CODI, @PRO_QTD, @PED_COD, @PRO_CDC, @PRO_DES, @IPE_VTL, @IPE_STA,
-              @IPE_DFP, @IPE_DDV, @USU_DEV, @CUP_COD, @UNI_COD, @IPE_PPM, @PRO_VAL, @PRO_VNG
+              @IPE_CODI, @PRO_QTD, @PRO_VAL, @PRO_VNG, @USU_LOG,
+              @PED_COD, @PRO_CDC, @PRO_DES, @IPE_VTL, @IPE_STA,
+              @IPE_DFP, @IPE_DDV, @USU_DEV, @CUP_COD, @UNI_COD, @IPE_PPM
             );
           `;
-          
-          // Log da query SQL antes de ser executada
-          console.log('  --- Query INSERT a ser executada ---');
-          console.log(queryInsert);
-          console.log('  --- Fim da Query INSERT ---');
-
-          const result = await request.query(queryInsert);
-          const insertedIpeCod = result.recordset[0].IPE_COD;
+          const resultInsert = await request.query(queryInsert);
+          const newIpeCod = resultInsert.recordset[0].IPE_COD;
+          inseridos++;
           itensInseridos.push({
-            indice: i,
-            IPE_COD: insertedIpeCod,
-            CUP_CDI: item.CUP_CDI // Ainda retornamos CUP_CDI para o frontend se ele precisar identificar qual foi inserido
+            IPE_COD: newIpeCod,
+            CUP_CDI: item.CUP_CDI, // Mantém o CUP_CDI original para o frontend
+            indice: i // Retorna o índice para o frontend saber qual item foi inserido
           });
-          sincronizados++; // Incrementa sincronizados para inserções
+          console.log(`  ✅ INSERT efetuado com IPE_COD: ${newIpeCod}`);
         }
-        // Cenário 3: Item DO PEDIDO e IPE_STA mudou (precisa atualizar status ou IPE_PPM)
-        else if (!item.FORA_DO_PEDIDO && item.IPE_COD) {
-          console.log(`  ✏️ UPDATE: Item do pedido, IPE_COD: ${item.IPE_COD} - Índice ${i}`);
-
-          request.input('IPE_STA_UPDATE', sql.Int, parseInt(item.IPE_STA));
-          request.input('IPE_COD_UPDATE', sql.Int, item.IPE_COD);
-          request.input('IPE_DDV_UPDATE', sql.DateTime, item.IPE_DDV ? new Date(item.IPE_DDV) : null); // Update IPE_DDV
-          request.input('USU_DEV_UPDATE', sql.VarChar(50), item.USU_DEV || null); // Update USU_DEV
-          request.input('IPE_PPM_UPDATE', sql.Bit, item.REMARCADO_PROX_MES ? 1 : 0); // Update IPE_PPM
+        // Cenário 3: Item DO PEDIDO e IPE_STA diferente de 1 (devolvido/remarcado), ou IPE_PPM mudou
+        else if (item.IPE_COD && item.IPE_STA !== 1 || item.REMARCADO_PROX_MES !== undefined) {
+          console.log(`  🔄 UPDATE: Item do pedido - Índice ${i}. IPE_COD: ${item.IPE_COD}`);
+          request.input('IPE_COD_UPD', sql.Int, item.IPE_COD);
+          request.input('IPE_STA_UPD', sql.Int, parseInt(item.IPE_STA));
+          request.input('IPE_DDV_UPD', sql.DateTime, item.IPE_DDV ? new Date(item.IPE_DDV) : null);
+          request.input('USU_DEV_UPD', sql.VarChar(50), item.USU_DEV || null);
+          request.input('IPE_PPM_UPD', sql.Bit, item.REMARCADO_PROX_MES ? 1 : 0); // Atualiza IPE_PPM
 
           const updateResult = await request.query(`
             UPDATE CAD_IPE
-            SET 
-              IPE_STA = @IPE_STA_UPDATE,
-              IPE_DDV = @IPE_DDV_UPDATE,
-              USU_DEV = @USU_DEV_UPDATE,
-              IPE_PPM = @IPE_PPM_UPDATE
-            WHERE IPE_COD = @IPE_COD_UPDATE;
+            SET IPE_STA = @IPE_STA_UPD,
+                IPE_DDV = @IPE_DDV_UPD,
+                USU_DEV = @USU_DEV_UPD,
+                IPE_PPM = @IPE_PPM_UPD
+            WHERE IPE_COD = @IPE_COD_UPD;
           `);
           if (updateResult.rowsAffected[0] > 0) {
             sincronizados++;
             itensAtualizados.push({ IPE_COD: item.IPE_COD });
             console.log(`  ✅ UPDATE efetuado para IPE_COD: ${item.IPE_COD}`);
           } else {
-            console.log(`  ⚠️ UPDATE não afetou linhas para IPE_COD: ${item.IPE_COD}. Item pode não existir ou status já é o mesmo.`);
+            console.log(`  ⚠️ UPDATE não afetou linhas para IPE_COD: ${item.IPE_COD}. Item pode já estar atualizado ou não existe.`);
           }
-        } else {
-          console.log(`  ⏩ IGNORADO: Item ${i} não se encaixa nos critérios de DELETE/INSERT/UPDATE.`);
+        }
+        // Cenário 4: Item DO PEDIDO e IPE_STA = 1 (desfeito devolução)
+        else if (item.IPE_COD && item.IPE_STA === 1) {
+          console.log(`  ⏪ UNDO UPDATE: Item do pedido, IPE_STA=1 - Índice ${i}. IPE_COD: ${item.IPE_COD}`);
+          request.input('IPE_COD_UNDO', sql.Int, item.IPE_COD);
+
+          const undoUpdateResult = await request.query(`
+            UPDATE CAD_IPE
+            SET IPE_STA = 1,
+                IPE_DDV = NULL,
+                USU_DEV = NULL,
+                IPE_PPM = 0
+            WHERE IPE_COD = @IPE_COD_UNDO;
+          `);
+          if (undoUpdateResult.rowsAffected[0] > 0) {
+            sincronizados++;
+            itensAtualizados.push({ IPE_COD: item.IPE_COD });
+            console.log(`  ✅ UNDO UPDATE efetuado para IPE_COD: ${item.IPE_COD}`);
+          } else {
+            console.log(`  ⚠️ UNDO UPDATE não afetou linhas para IPE_COD: ${item.IPE_COD}. Item pode já estar atualizado ou não existe.`);
+          }
+        }
+        else {
+            console.log(`  ❓ Nenhuma ação para item ${i}. IPE_COD: ${item.IPE_COD}, IPE_STA: ${item.IPE_STA}, FORA_DO_PEDIDO: ${item.FORA_DO_PEDIDO}`);
         }
 
       } catch (itemError) {
-        // Log específico para erro de um item, sem abortar toda a transação
-        console.error(`❌ Erro ao processar item índice ${i}: ${itemError.message}`);
-        // Você pode optar por continuar ou reverter tudo aqui.
-        // Por enquanto, apenas logamos e permitimos que outros itens sejam processados.
-        // Se quiser que um erro em um item aborte tudo, use `throw itemError;` aqui.
-        // Mas o objetivo de uma transação é falhar ou ter sucesso atomicamente.
-        // Para transações que processam múltiplos itens e podem ter falhas parciais:
-        //  - Reverter a transação completa se qualquer item falhar: `throw itemError;`
-        //  - Continuar e registrar falhas: Apenas logar e ir para o próximo item.
-        //    (Mas a transação ainda seria um sucesso, a menos que haja um `throw`)
-        // Para este caso, vamos reverter tudo se um item individual falhar:
-        await transaction.rollback();
-        console.error('❌ Transação revertida devido a erro em um item.');
-        return res.status(500).json({
-          success: false,
-          error: `Erro ao sincronizar item ${i}`,
-          details: itemError.message
-        });
+        console.error(`❌ Erro ao processar item índice ${i}:`, itemError.message);
+        // Não faz rollback aqui, apenas registra o erro e continua
+        // A transação só dará rollback se um erro fatal ocorrer fora do loop,
+        // ou se decidirmos fazer rollback em caso de erro individual (o que não é o caso aqui)
+        // Por enquanto, apenas logamos o erro e continuamos.
+        // Se quisermos que um erro individual impeça a transação toda,
+        // devemos remover o try/catch interno e deixar o catch externo cuidar.
       }
     }
 
     await transaction.commit();
-    console.log('✅ Transação concluída com sucesso!');
+    console.log('✅ Transação commitada com sucesso!');
 
     res.status(200).json({
       success: true,
-      message: 'Sincronização concluída com sucesso',
-      sincronizados: sincronizados, // Itens atualizados e inseridos
-      inseridos: itensInseridos.length,
-      deletados: deletados,
+      message: 'Sincronização concluída com sucesso!',
+      sincronizados,
+      inseridos,
+      deletados,
       detalhes: {
-        itensInseridos: itensInseridos,
-        itensAtualizados: itensAtualizados,
-        itensDeletados: itensDeletados
+        itensInseridos,
+        itensAtualizados,
+        itensDeletados
       }
     });
 
-  } catch (error) {
-    console.error('💥 ERRO GERAL NA FUNÇÃO syncIpeDevolucoes:', error);
+  } catch (err) {
+    console.error('💥 Erro geral na sincronização:', err);
+    try {
+      await transaction.rollback();
+      console.error('↩️ Transação rollback devido a erro geral.');
+    } catch (rollbackErr) {
+      console.error('❌ Erro ao tentar rollback:', rollbackErr);
+    }
     res.status(500).json({
       success: false,
-      error: 'Erro interno do servidor',
-      details: error.message
+      error: 'Erro interno ao sincronizar dados.',
+      details: err.message
     });
   }
 });
