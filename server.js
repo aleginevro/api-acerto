@@ -289,6 +289,114 @@ app.post('/api/atualizar-status-itens-ipe', async (req, res) => {
 
 
 
+app.post('/api/registrar-recebimentos', async (req, res) => {
+    console.log('API Recebida: /api/registrar-recebimentos');
+    try {
+        const {
+            REV_COD,         // Código da revendedora
+            PED_COD,         // Código do pedido
+            VALOR_DINHEIRO,  // Valor do Dinheiro
+            VALOR_CARTAO,    // Valor do Cartão
+            VALOR_DEPOSITO_PIX, // Valor do Depósito/Pix
+            VALOR_CHEQUE,    // Valor do Cheque
+            VALOR_VALE,      // Valor do Vale
+            TOTAL_RECEBIDO,  // Total geral recebido (calculado pelo front)
+            VALOR_TROCO      // Valor do troco (calculado pelo front)
+        } = req.body;
+
+        // --- Validação básica dos dados recebidos ---
+        if (!REV_COD || !PED_COD) {
+            console.error('Erro de validação: REV_COD ou PED_COD ausente.');
+            return res.status(400).json({
+                success: false,
+                error: 'REV_COD e PED_COD são obrigatórios.',
+                details: 'Certifique-se de que o código da revendedora e o código do pedido foram fornecidos.'
+            });
+        }
+
+        // --- Lógica de Inserção no Banco de Dados ---
+        // Aqui é onde você conectaria ao seu banco de dados (SQL Server, PostgreSQL, MySQL, etc.)
+        // e executaria o comando INSERT ou UPDATE.
+
+        // Exemplo de como os campos podem ser usados em um INSERT:
+        const query = `
+            INSERT INTO TBL_FINANCEIRO_ACERTO (
+                REV_COD,
+                PED_COD,
+                FCS_VLDP,  -- Dinheiro
+                FCS_VCTP,  -- Cartão
+                FCS_VDPP,  -- Depósito/Pix
+                FCS_VLCP,  -- Cheque
+                FCS_VVLP,  -- Vale
+                FCS_VLR_TOTAL_RECEBIDO, -- Total Recebido
+                FCS_VLR_TROCO,   -- Troco
+                FCS_DATA_REGISTRO -- Data/hora do registro
+            ) VALUES (
+                '${REV_COD}',
+                '${PED_COD}',
+                ${VALOR_DINHEIRO || 0},
+                ${VALOR_CARTAO || 0},
+                ${VALOR_DEPOSITO_PIX || 0},
+                ${VALOR_CHEQUE || 0},
+                ${VALOR_VALE || 0},
+                ${TOTAL_RECEBIDO || 0},
+                ${VALOR_TROCO || 0},
+                GETDATE() -- Ou CURRENT_TIMESTAMP, dependendo do seu banco
+            );
+        `;
+        // Ou se você já tem uma entrada e precisa atualizar:
+        /*
+        const updateQuery = `
+            UPDATE TBL_FINANCEIRO_ACERTO
+            SET
+                FCS_VLDP = ${VALOR_DINHEIRO || 0},
+                FCS_VCTP = ${VALOR_CARTAO || 0},
+                FCS_VDPP = ${VALOR_DEPOSITO_PIX || 0},
+                FCS_VLCP = ${VALOR_CHEQUE || 0},
+                FCS_VVLP = ${VALOR_VALE || 0},
+                FCS_VLR_TOTAL_RECEBIDO = ${TOTAL_RECEBIDO || 0},
+                FCS_VLR_TROCO = ${VALOR_TROCO || 0},
+                FCS_DATA_REGISTRO = GETDATE()
+            WHERE REV_COD = '${REV_COD}' AND PED_COD = '${PED_COD}';
+        `;
+        */
+        // Você precisará de um driver de banco de dados (ex: 'mssql' para SQL Server, 'pg' para PostgreSQL)
+        // e de uma função para executar essas queries.
+
+        // Exemplo hipotético com um cliente de banco de dados (substitua pela sua implementação):
+        // const dbResult = await seuClienteDB.execute(query);
+        // console.log('Resultado da operação no DB:', dbResult);
+
+        console.log(`Dados financeiros para REV_COD: ${REV_COD}, PED_COD: ${PED_COD} registrados com sucesso (simulado).`);
+
+        // --- Resposta de Sucesso ---
+        res.status(200).json({
+            success: true,
+            message: 'Recebimentos registrados com sucesso no backend.',
+            data: {
+                REV_COD, PED_COD,
+                FCS_VLDP: VALOR_DINHEIRO,
+                FCS_VCTP: VALOR_CARTAO,
+                FCS_VDPP: VALOR_DEPOSITO_PIX,
+                FCS_VLCP: VALOR_CHEQUE,
+                FCS_VVLP: VALOR_VALE
+            }
+        });
+
+    } catch (error) {
+        console.error('Erro ao registrar recebimentos no backend:', error.message);
+        res.status(500).json({
+            success: false,
+            error: 'Erro interno do servidor ao registrar recebimentos.',
+            details: error.message
+        });
+    }
+});
+
+
+
+
+
 // ENDPOINT: Para login de promotores
 app.post('/api/login-promotor', async (req, res) => {
   try {
