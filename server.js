@@ -424,8 +424,9 @@ app.post('/api/login-promotor', async (req, res) => {
     request.input('SENHA_CLI_DOC', sql.VarChar(14), senha);
 
     const query = `
-      SELECT CLI_COD, GRU_COD, CLI_RAZ, CLI_DOC
+      SELECT CLI_COD, GRU_COD, CLI_RAZ, CLI_DOC, cad_emp.EMP_NMR
       FROM CAD_CLI
+      JOIN cad_emp on cad_emp.EMP_COD=cad_cli.EMP_COD
       WHERE CLI_DOC = @CLI_DOC
         AND CLI_DOC = @SENHA_CLI_DOC
         AND GRU_COD IN (2, 4)
