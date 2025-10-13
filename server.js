@@ -445,7 +445,8 @@ app.post('/api/login-promotor', async (req, res) => {
           CLI_COD: promotor.CLI_COD,
           GRU_COD: promotor.GRU_COD,
           CLI_RAZ: promotor.CLI_RAZ,
-          CLI_DOC: promotor.CLI_DOD
+          CLI_DOC: promotor.CLI_DOC,
+          EMP_NMR: promotor.EMP_NMR
         }
       });
     } else {
